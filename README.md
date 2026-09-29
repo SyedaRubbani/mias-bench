@@ -133,7 +133,7 @@ making them visible is part of the contribution.
 ## Install and reproduce
 
 ```bash
-git clone https://github.com/<you>/mias-bench && cd mias-bench
+git clone https://github.com/SyedaRubbani/mias-bench && cd mias-bench
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
@@ -153,20 +153,12 @@ Everything is seeded and deterministic: the same command produces byte-identical
 CSVs. Both figures are regenerated from the shipped CSVs alone, so a reviewer
 can reproduce every panel without rerunning a simulation.
 
-Against a real engine — free Colab T4 is enough. Three cells, no notebook
-ordering to get wrong:
+Against a real engine — a free Colab T4 is enough. Two cells:
 
 ```python
 !pip install -q vllm aiohttp
-```
-```python
-# upload mias-bench.tar.gz when prompted
-import tarfile, glob, os
-from google.colab import files
-up = files.upload(); name = next(iter(up))
-with tarfile.open(name) as tar: tar.extractall("/content")
-os.chdir(os.path.dirname(os.path.dirname(
-    glob.glob("/content/**/mias/__init__.py", recursive=True)[0])))
+!git clone -q https://github.com/SyedaRubbani/mias-bench.git
+%cd mias-bench
 ```
 ```python
 !python scripts/run_t4.py --smoke     # ~3 min, proves the path end to end
