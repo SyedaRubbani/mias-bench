@@ -88,10 +88,14 @@ class TestNotebook(unittest.TestCase):
         self.assertIn("files.upload", joined)
         self.assertIn("tarfile", joined)
 
-    def test_launch_falls_back_when_chunked_prefill_is_unsupported(self):
+    def test_launch_probes_flags_rather_than_assuming_them(self):
+        """vLLM's CLI changes between releases; the notebook must adapt."""
         joined = "\n".join(code_cells(self.nb))
-        self.assertIn("chunked_prefill=False", joined,
-                      "launch() should retry without chunked prefill on Turing")
+        self.assertIn("supported_flags", joined,
+                      "launch() should read --help and drop unknown flags")
+        self.assertIn("--help", joined)
+        self.assertIn("DROPPED_FLAGS", joined,
+                      "dropped flags must be recorded, not silently discarded")
 
     def test_records_hardware_provenance(self):
         joined = "\n".join(code_cells(self.nb))

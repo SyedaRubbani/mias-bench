@@ -170,45 +170,73 @@ matter for this study:
 
 T4-specific flags are set for you: `--dtype half` (Turing has no bfloat16)
 and a conservative `--gpu-memory-utilization`.
+
+**Flags are probed, not assumed.** vLLM's CLI moves between releases — flags
+get renamed, and options that were opt-in become defaults. Rather than
+hard-coding a set that works for one version, the cell below reads
+`--help` once and drops anything this build does not accept, printing what it
+dropped. Record that line with your results: if `--enable-chunked-prefill` was
+dropped because the build enables it by default, that is a fact about your
+measurement conditions, not a detail to omit.
 """
 
 CODE_LAUNCH = '''\
-import os, signal, subprocess, time, urllib.request
+import functools, os, signal, subprocess, sys, time, urllib.request
 
 MODEL = "Qwen/Qwen2.5-1.5B-Instruct"   # ~3.1 GB in fp16; fits a T4 with room
 BASE_URL = "http://127.0.0.1:8000"
+SERVER_MODULE = "vllm.entrypoints.openai.api_server"
 _server = None
+DROPPED_FLAGS = []
+
+
+@functools.lru_cache(maxsize=1)
+def supported_flags():
+    """Flags this vLLM build actually accepts, read from its own --help."""
+    import re
+    out = subprocess.run([sys.executable, "-m", SERVER_MODULE, "--help"],
+                         capture_output=True, text=True, timeout=300)
+    return set(re.findall(r"(--[a-z0-9][a-z0-9-]*)", out.stdout + out.stderr))
+
+
+def _filter(cmd):
+    """Drop unsupported flags (and their values) instead of failing on them."""
+    ok = supported_flags()
+    kept, dropped, i = [], [], 0
+    while i < len(cmd):
+        tok = cmd[i]
+        if tok.startswith("--") and tok not in ok:
+            dropped.append(tok)
+            i += 1
+            if i < len(cmd) and not cmd[i].startswith("--"):
+                i += 1          # skip this flag's value too
+            continue
+        kept.append(tok)
+        i += 1
+    if dropped:
+        DROPPED_FLAGS[:] = dropped
+        print("vLLM build does not accept, so dropped:", " ".join(dropped))
+    return kept
 
 
 def launch(num_gpu_blocks_override=None, priority=False,
-           max_num_seqs=16, max_model_len=4096, timeout=900,
-           chunked_prefill=True, _retry=True):
-    """Start vLLM in the background and block until it is serving.
-
-    On Turing, chunked prefill is the flag most likely to be unsupported by
-    the engine build Colab installs. If startup fails with it on, this retries
-    once without it and tells you, rather than leaving you to read a 4000-line
-    log. Note in your results which mode actually ran.
-    """
+           max_num_seqs=16, max_model_len=4096, timeout=900):
+    """Start vLLM in the background and block until it is serving."""
     global _server
     shutdown()
-    cmd = [
-        "python", "-m", "vllm.entrypoints.openai.api_server",
+    cmd = _filter([
+        sys.executable, "-m", SERVER_MODULE,
         "--model", MODEL,
         "--dtype", "half",                 # T4 is Turing: no bfloat16
         "--max-model-len", str(max_model_len),
         "--max-num-seqs", str(max_num_seqs),
         "--gpu-memory-utilization", "0.85",
         "--enable-prefix-caching",
-        "--disable-log-requests",
+        "--enable-chunked-prefill",
         "--port", "8000",
-    ]
-    if chunked_prefill:
-        cmd += ["--enable-chunked-prefill"]
-    if num_gpu_blocks_override:
-        cmd += ["--num-gpu-blocks-override", str(num_gpu_blocks_override)]
-    if priority:
-        cmd += ["--scheduling-policy", "priority"]
+    ] + (["--num-gpu-blocks-override", str(num_gpu_blocks_override)]
+         if num_gpu_blocks_override else [])
+      + (["--scheduling-policy", "priority"] if priority else []))
 
     log = open("/content/vllm.log", "w")
     _server = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT,
@@ -216,22 +244,19 @@ def launch(num_gpu_blocks_override=None, priority=False,
     t0 = time.time()
     while time.time() - t0 < timeout:
         if _server.poll() is not None:
-            tail = open("/content/vllm.log").read()[-4000:]
-            if _retry and chunked_prefill:
-                print("Startup failed with --enable-chunked-prefill; "
-                      "retrying without it.\\n")
-                return launch(num_gpu_blocks_override, priority, max_num_seqs,
-                              max_model_len, timeout, chunked_prefill=False,
-                              _retry=False)
-            print(tail)
-            raise RuntimeError("vLLM exited during startup - see log above")
+            print(open("/content/vllm.log").read()[-4000:])
+            raise RuntimeError(
+                "vLLM exited during startup - see the log tail above. If it "
+                "names an unsupported attention backend on Turing, try "
+                "os.environ['VLLM_ATTENTION_BACKEND'] = 'TRITON_ATTN' and "
+                "rerun this cell."
+            )
         try:
             with urllib.request.urlopen(f"{BASE_URL}/health", timeout=2) as r:
                 if r.status == 200:
                     print(f"server up in {time.time() - t0:.0f}s  "
                           f"(blocks_override={num_gpu_blocks_override}, "
-                          f"priority={priority}, "
-                          f"chunked_prefill={chunked_prefill})")
+                          f"priority={priority})")
                     return
         except Exception:
             time.sleep(3)
@@ -254,6 +279,13 @@ def kv_blocks_reported():
     text = open("/content/vllm.log").read()
     m = re.findall(r"GPU (?:KV cache size|blocks)[:=] *([\\d,]+)", text)
     return m[-1] if m else "unknown"
+
+
+print("probing vLLM CLI ...")
+print(f"{len(supported_flags())} flags supported by this build")
+for f in ["--enable-prefix-caching", "--enable-chunked-prefill",
+          "--num-gpu-blocks-override", "--scheduling-policy", "--dtype"]:
+    print(f"  {f:<30} {'yes' if f in supported_flags() else 'NO - will drop'}")
 '''
 
 MD_CAL = """\
@@ -455,6 +487,7 @@ prov = {
                            "--format=csv,noheader"],
                           capture_output=True, text=True).stdout.strip(),
     "model": MODEL,
+    "server_flags_dropped": list(DROPPED_FLAGS),
     "vllm": subprocess.run(["python", "-c", "import vllm; print(vllm.__version__)"],
                            capture_output=True, text=True).stdout.strip(),
     "torch": subprocess.run(["python", "-c", "import torch; print(torch.__version__)"],
