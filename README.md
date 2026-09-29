@@ -71,6 +71,25 @@ Note the middle row. Being *cache-aware* is not enough: a policy that equalises
 latency without knowing the interaction design fixes nothing. The information
 that matters is design intent, not timing.
 
+## Interactive explorer
+
+`viz/index.html` is a self-contained page that makes the serving layer visible: one row
+per interaction round, one dot per agent, placed at the moment that agent starts
+speaking. Under the default policy the dots pile on top of one another — the agents
+answer in the same engine step and the human never gets a turn. Switch to the
+agency-preserving policy and the same rounds become a staircase.
+
+Open it locally (no server needed):
+
+```bash
+python -m mias.experiments.make_viz_data   # -> results/viz_data.json
+python tools/build_viz.py                  # -> viz/index.html
+```
+
+The page is why this matters as an interaction problem rather than a systems one: if
+the claim is that scheduling decisions are invisible to interaction designers, then
+making them visible is part of the contribution.
+
 ![H1](results/figures/fig1_order_fidelity.png)
 ![H3](results/figures/fig2_policy_tradeoff.png)
 
@@ -118,13 +137,13 @@ git clone https://github.com/<you>/mias-bench && cd mias-bench
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-./run_all.sh          # 45 tests, both experiments, both figures (~3 min, CPU only)
+./run_all.sh          # 49 tests, both experiments, both figures (~3 min, CPU only)
 ```
 
 Or step by step:
 
 ```bash
-python -m unittest discover -s tests -v       # 45 tests
+python -m unittest discover -s tests -v       # 49 tests
 python -m mias.experiments.h1_order_fidelity  # -> results/h1_order_fidelity.csv
 python -m mias.experiments.h3_policy_tradeoff # -> results/h3_policy_tradeoff.csv
 python -m mias.experiments.make_figures       # -> results/figures/*.png
@@ -195,10 +214,13 @@ mias/
   measure.py                live client: fires rounds against a real vLLM
                             server, three dispatch modes, calibration
   harness.py                condition runner and CSV writer
-  experiments/              h1_order_fidelity, h3_policy_tradeoff, make_figures
+  experiments/              h1_order_fidelity, h3_policy_tradeoff, make_figures,
+                            make_viz_data
 notebooks/
   colab_t4_measurement.ipynb   end-to-end GPU measurement on a free Colab T4
+viz/                        self-contained interactive provenance explorer
 scripts/run_t4.py           single-command GPU run (probe, calibrate, measure)
+tools/build_viz.py          inlines the data into the explorer
 tools/build_notebook.py     generates the notebook (kept in sync by a test)
 tests/
   test_mias.py              20 tests: allocator invariants, metric edge cases,

@@ -1,0 +1,438 @@
+<title>Turn Order Collapse</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Layout: instrument panel — controls and summary above, all-rounds ribbon
+   as the overview, one round expanded below it as the detail. */
+:root {
+  --bg: #fbfbfc;
+  --panel: #ffffff;
+  --ink: #16181d;
+  --ink-2: #4a4f5a;
+  --ink-3: #797f8b;
+  --rule: #e3e5ea;
+  --rule-strong: #c9cdd6;
+  --accent: #2563eb;
+  --warn-bg: #fdeced;
+  --warn-ink: #9f1239;
+  --ok-bg: #eaf5ee;
+  --lane: #f3f4f7;
+
+  --a0: #15803d;   /* analyst     */
+  --a1: #2563eb;   /* critic      */
+  --a2: #d97706;   /* retriever   */
+  --a3: #be185d;   /* summariser  */
+
+  --serif: "Source Serif 4", Georgia, serif;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121418; --panel: #191c22; --ink: #eceef2; --ink-2: #b2b8c4;
+    --ink-3: #848b99; --rule: #2a2e37; --rule-strong: #3d434f;
+    --accent: #60a5fa; --warn-bg: #3a1620; --warn-ink: #fda4af;
+    --ok-bg: #16281d; --lane: #1f232b;
+    --a0: #16a34a; --a1: #3b82f6; --a2: #d97706; --a3: #ec4899;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121418; --panel: #191c22; --ink: #eceef2; --ink-2: #b2b8c4;
+  --ink-3: #848b99; --rule: #2a2e37; --rule-strong: #3d434f;
+  --accent: #60a5fa; --warn-bg: #3a1620; --warn-ink: #fda4af;
+  --ok-bg: #16281d; --lane: #1f232b;
+  --a0: #16a34a; --a1: #3b82f6; --a2: #d97706; --a3: #ec4899;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--sans); font-size: 15px; line-height: 1.55;
+  margin: 0;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 56px; }
+
+header { border-bottom: 1px solid var(--rule); padding-bottom: 22px; }
+h1 {
+  font-family: var(--serif); font-weight: 600; font-size: clamp(26px, 4.2vw, 38px);
+  line-height: 1.12; margin: 0 0 10px; letter-spacing: -0.01em; text-wrap: balance;
+}
+.thesis { margin: 0; max-width: 62ch; color: var(--ink-2); font-size: 16px; }
+.thesis b { color: var(--ink); font-weight: 600; }
+
+.controls {
+  display: flex; flex-wrap: wrap; gap: 18px 26px;
+  margin-top: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--rule);
+}
+.ctl { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.ctl > span {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 500;
+}
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button {
+  font-family: var(--sans); font-size: 13px; color: var(--ink-2);
+  background: var(--panel); border: 1px solid var(--rule-strong);
+  border-radius: 5px; padding: 6px 12px; cursor: pointer;
+}
+.seg button:hover { border-color: var(--accent); color: var(--ink); }
+.seg button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500;
+}
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 1px;
+  background: var(--rule); border: 1px solid var(--rule); margin-top: 24px; }
+.stat { background: var(--panel); padding: 13px 15px; min-width: 0; }
+.stat dt { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-3); margin: 0 0 4px; }
+.stat dd { margin: 0; font-family: var(--mono); font-size: 21px; font-weight: 500;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.stat .sub { display: block; font-family: var(--sans); font-size: 11.5px;
+  font-weight: 400; color: var(--ink-3); letter-spacing: 0; margin-top: 2px; }
+.stat.alert dd { color: var(--warn-ink); }
+
+h2 { font-family: var(--serif); font-size: 21px; font-weight: 600; margin: 40px 0 4px; }
+.note { margin: 0 0 16px; color: var(--ink-2); font-size: 14px; max-width: 66ch; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 14px;
+  font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.scroller { overflow-x: auto; border: 1px solid var(--rule); background: var(--panel); }
+svg { display: block; width: 100%; height: auto; }
+text { font-family: var(--sans); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.rowbtn { cursor: pointer; }
+.rowbtn:hover rect.hit { fill: var(--lane); }
+
+footer { margin-top: 44px; padding-top: 20px; border-top: 1px solid var(--rule);
+  color: var(--ink-3); font-size: 13px; }
+footer a { color: var(--accent); }
+footer p { margin: 0 0 8px; max-width: 70ch; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Turn Order Collapse</h1>
+    <p class="thesis">A mixed-initiative system specifies which agent speaks first. The
+      <b>LLM serving engine decides</b>, on the basis of KV-cache residency, batch composition
+      and preemption. This shows how much of the design survives.</p>
+  </header>
+
+  <div class="controls">
+    <label class="ctl"><span>Scheduling policy</span>
+      <span class="seg" id="seg-policy"></span></label>
+    <label class="ctl"><span>KV pool</span>
+      <span class="seg" id="seg-cond"></span></label>
+  </div>
+
+  <dl class="stats" id="stats"></dl>
+
+  <h2>Every round at a glance</h2>
+  <p class="note" id="overview-note"></p>
+  <div class="legend" id="legend"></div>
+  <div class="scroller"><svg id="ribbon" role="img" aria-labelledby="ribbon-t"><title id="ribbon-t">First-token time of each agent, one row per interaction round</title></svg></div>
+
+  <h2>Inside one round</h2>
+  <p class="note">Each lane is one agent, in designed speaking order. The pale bar is prefill,
+    the solid bar is decoding, and the notch where they meet is the first token — the moment
+    that agent starts speaking. Click any row above to inspect it.</p>
+  <div class="scroller"><svg id="detail" role="img" aria-labelledby="detail-t"><title id="detail-t">Timeline of one interaction round, one lane per agent</title></svg></div>
+
+  <footer>
+    <p id="foot-reading"></p>
+    <p>Simulated with a reference model of vLLM's block-paged KV allocation, prefix caching,
+      continuous batching and LIFO preemption. Timing constants are placeholders, not hardware
+      measurements — see the repository's limitations section.</p>
+    <p><a href="https://github.com/SyedaRubbani/mias-bench">github.com/SyedaRubbani/mias-bench</a></p>
+  </footer>
+</div>
+
+<script id="viz-data" type="application/json">__DATA__</script>
+<script>
+(function () {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("viz-data").textContent);
+  const AGENTS = DATA.agents;
+  const GATE = DATA.gate_threshold;
+  const COLORS = ["var(--a0)", "var(--a1)", "var(--a2)", "var(--a3)"];
+
+  const POLICY_LABEL = {
+    fcfs: "FCFS (vLLM default)",
+    latency_equalised: "Latency-equalised",
+    agency_preserving: "Agency-preserving"
+  };
+  const COND_LABEL = { kv_large: "Roomy", kv_tight: "Under pressure" };
+
+  let state = { policy: "fcfs", cond: "kv_large", round: 0 };
+
+  const el = (id) => document.getElementById(id);
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function node(name, attrs, text) {
+    const n = document.createElementNS(SVGNS, name);
+    for (const k in attrs) if (attrs[k] !== null) n.setAttribute(k, attrs[k]);
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  const fmt = (v, d) => (v === null || v === undefined || isNaN(v)) ? "—" : v.toFixed(d);
+
+  // ---- controls ---------------------------------------------------------
+  function buildSeg(id, options, labels, key) {
+    const host = el(id);
+    host.textContent = "";
+    options.forEach(function (opt) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = labels[opt] || opt;
+      b.setAttribute("aria-pressed", String(state[key] === opt));
+      b.addEventListener("click", function () {
+        state[key] = opt;
+        render();
+      });
+      host.appendChild(b);
+    });
+  }
+
+  function current() {
+    return DATA.conditions[state.cond].policies[state.policy];
+  }
+
+  // ---- summary ----------------------------------------------------------
+  function renderStats() {
+    const s = current().summary;
+    const items = [
+      { t: "Order fidelity τ", v: fmt(s.tau, 2),
+        sub: s.tau < 0.25 ? "no better than chance" : (s.tau > 0.9 ? "design preserved" : "partial"),
+        alert: s.tau < 0.25 },
+      { t: "Rounds flattened", v: Math.round(s.simultaneity * 100) + "%",
+        sub: "agents speak in the same step", alert: s.simultaneity > 0.5 },
+      { t: "Human floor", v: fmt(s.gate_gap, 2) + "s",
+        sub: "needs " + GATE + "s to react", alert: s.gate_gap < GATE },
+      { t: "Windows lost", v: Math.round(s.displacement * 100) + "%",
+        sub: "gates closed too fast", alert: s.displacement > 0.25 },
+      { t: "Throughput", v: Math.round(s.throughput), sub: "output tokens / s", alert: false },
+      { t: "Preemptions", v: s.preemptions, sub: "turns evicted and redone", alert: false }
+    ];
+    const dl = el("stats");
+    dl.textContent = "";
+    items.forEach(function (it) {
+      const d = document.createElement("div");
+      d.className = "stat" + (it.alert ? " alert" : "");
+      const dt = document.createElement("dt"); dt.textContent = it.t;
+      const dd = document.createElement("dd"); dd.textContent = it.v;
+      const sp = document.createElement("span"); sp.className = "sub"; sp.textContent = it.sub;
+      dd.appendChild(sp); d.appendChild(dt); d.appendChild(dd);
+      dl.appendChild(d);
+    });
+  }
+
+  function renderLegend() {
+    const host = el("legend");
+    host.textContent = "";
+    AGENTS.forEach(function (a, i) {
+      const s = document.createElement("span");
+      const dot = document.createElement("i");
+      dot.style.background = COLORS[i];
+      s.appendChild(dot);
+      s.appendChild(document.createTextNode((i + 1) + ". " + a.name + (a.gate ? " · human gate" : "")));
+      host.appendChild(s);
+    });
+  }
+
+  // ---- overview ribbon --------------------------------------------------
+  const RIB = { left: 92, right: 26, top: 34, rowH: 22, bottom: 34, maxT: 3.2 };
+
+  function renderRibbon() {
+    const rounds = current().rounds;
+    const W = 860, H = RIB.top + rounds.length * RIB.rowH + RIB.bottom;
+    const svg = el("ribbon");
+    while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("style", "min-width:640px");
+
+    const x = (t) => RIB.left + Math.min(t, RIB.maxT) / RIB.maxT * (W - RIB.left - RIB.right);
+
+    // time axis
+    for (let t = 0; t <= 3; t += 0.5) {
+      svg.appendChild(node("line", { x1: x(t), x2: x(t), y1: RIB.top - 8, y2: H - RIB.bottom + 4,
+        stroke: "var(--rule)", "stroke-width": 1 }));
+      svg.appendChild(node("text", { x: x(t), y: RIB.top - 14, "text-anchor": "middle",
+        "font-size": 10.5, fill: "var(--ink-3)", class: "mono" }, t.toFixed(1) + "s"));
+    }
+    // human reaction threshold
+    svg.appendChild(node("line", { x1: x(GATE), x2: x(GATE), y1: RIB.top - 8, y2: H - RIB.bottom + 4,
+      stroke: "var(--warn-ink)", "stroke-width": 1.5, "stroke-dasharray": "3 3" }));
+    svg.appendChild(node("text", { x: x(GATE) + 6, y: H - RIB.bottom + 18, "font-size": 11,
+      fill: "var(--warn-ink)" }, GATE + "s — the human needs this long to react"));
+    svg.appendChild(node("text", { x: 8, y: RIB.top - 14, "font-size": 10.5, fill: "var(--ink-3)" },
+      "round"));
+
+    rounds.forEach(function (r, i) {
+      const y = RIB.top + i * RIB.rowH + RIB.rowH / 2;
+      const g = node("g", { class: "rowbtn", tabindex: 0, role: "button" });
+      g.appendChild(node("rect", { class: "hit", x: 0, y: y - RIB.rowH / 2, width: W,
+        height: RIB.rowH, fill: i === state.round ? "var(--lane)" : "transparent" }));
+      g.appendChild(node("text", { x: 8, y: y + 4, "font-size": 11, fill: "var(--ink-3)",
+        class: "mono" }, "s" + r.session + "·r" + r.round));
+      g.appendChild(node("line", { x1: RIB.left, x2: W - RIB.right, y1: y, y2: y,
+        stroke: "var(--rule)", "stroke-width": 1 }));
+
+      // stack dots that land on the same instant so overlap stays visible
+      const seen = {};
+      r.turns.forEach(function (t) {
+        if (t.first === null) return;
+        const key = t.first.toFixed(3);
+        const n = seen[key] || 0;
+        seen[key] = n + 1;
+        const dy = n === 0 ? 0 : (n % 2 ? -1 : 1) * Math.ceil(n / 2) * 4.2;
+        g.appendChild(node("circle", { cx: x(t.first), cy: y + dy, r: 4,
+          fill: COLORS[t.rank], stroke: "var(--panel)", "stroke-width": 1.4 }));
+      });
+      g.addEventListener("click", function () { state.round = i; renderDetail(); renderRibbon(); });
+      g.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault(); state.round = i; renderDetail(); renderRibbon();
+        }
+      });
+      svg.appendChild(g);
+    });
+  }
+
+  // ---- detail timeline --------------------------------------------------
+  const DET = { left: 96, right: 30, top: 40, laneH: 44, bottom: 46 };
+
+  function renderDetail() {
+    const r = current().rounds[state.round];
+    const svg = el("detail");
+    while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
+    const W = 860, H = DET.top + AGENTS.length * DET.laneH + DET.bottom;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("style", "min-width:640px");
+
+    let maxT = 0;
+    r.turns.forEach(function (t) { if (t.finish !== null) maxT = Math.max(maxT, t.finish); });
+    maxT = Math.max(maxT, 1) * 1.04;
+    const x = (t) => DET.left + (t / maxT) * (W - DET.left - DET.right);
+
+    const step = maxT > 6 ? 2 : (maxT > 3 ? 1 : 0.5);
+    for (let t = 0; t <= maxT; t += step) {
+      svg.appendChild(node("line", { x1: x(t), x2: x(t), y1: DET.top - 10,
+        y2: H - DET.bottom + 6, stroke: "var(--rule)", "stroke-width": 1 }));
+      svg.appendChild(node("text", { x: x(t), y: DET.top - 16, "text-anchor": "middle",
+        "font-size": 10.5, fill: "var(--ink-3)", class: "mono" }, t.toFixed(1) + "s"));
+    }
+    svg.appendChild(node("text", { x: 8, y: DET.top - 16, "font-size": 11, fill: "var(--ink-3)" },
+      "round " + r.session + "·" + r.round));
+
+    const byRank = {};
+    r.turns.forEach(function (t) { byRank[t.rank] = t; });
+
+    // human gate bands, drawn behind the lanes
+    r.turns.forEach(function (t) {
+      if (!t.gate || t.first === null) return;
+      const pred = byRank[t.rank - 1];
+      if (!pred || pred.first === null) return;
+      const gap = t.first - pred.first;
+      const ok = gap >= GATE;
+      const x0 = x(Math.min(pred.first, t.first)), x1 = x(Math.max(pred.first, t.first));
+      svg.appendChild(node("rect", { x: x0, y: DET.top - 4,
+        width: Math.max(x1 - x0, 2), height: AGENTS.length * DET.laneH,
+        fill: ok ? "var(--ok-bg)" : "var(--warn-bg)" }));
+      if (x1 - x0 > 46) {
+        svg.appendChild(node("text", { x: (x0 + x1) / 2, y: H - DET.bottom + 20,
+          "text-anchor": "middle", "font-size": 11,
+          fill: ok ? "var(--ink-2)" : "var(--warn-ink)", class: "mono" },
+          gap.toFixed(2) + "s"));
+      }
+    });
+
+    r.turns.forEach(function (t, i) {
+      const y = DET.top + i * DET.laneH + DET.laneH / 2;
+      svg.appendChild(node("rect", { x: DET.left, y: y - 13, width: W - DET.left - DET.right,
+        height: 26, fill: "var(--lane)", opacity: 0.55 }));
+      svg.appendChild(node("text", { x: 8, y: y - 1, "font-size": 12.5, fill: "var(--ink)",
+        "font-weight": 500 }, (t.rank + 1) + ". " + t.agent));
+      svg.appendChild(node("text", { x: 8, y: y + 13, "font-size": 10.5, fill: "var(--ink-3)" },
+        t.gate ? "human gate before" : (t.cached + " blocks cached")));
+
+      const admit = t.admit === null ? t.arrive : t.admit;
+      if (t.first !== null) {
+        // prefill
+        svg.appendChild(node("rect", { x: x(admit), y: y - 8,
+          width: Math.max(x(t.first) - x(admit), 1.5), height: 16,
+          fill: COLORS[t.rank], opacity: 0.28 }));
+        // decode
+        if (t.finish !== null) {
+          svg.appendChild(node("rect", { x: x(t.first), y: y - 8,
+            width: Math.max(x(t.finish) - x(t.first), 1.5), height: 16,
+            fill: COLORS[t.rank], opacity: 0.9 }));
+        }
+        // first token notch
+        svg.appendChild(node("line", { x1: x(t.first), x2: x(t.first), y1: y - 15, y2: y + 15,
+          stroke: "var(--ink)", "stroke-width": 2 }));
+      }
+      if (t.preempt > 0) {
+        svg.appendChild(node("text", { x: x(admit) - 6, y: y + 4, "text-anchor": "end",
+          "font-size": 11, fill: "var(--warn-ink)" }, "↺" + t.preempt));
+      }
+    });
+
+    // realised speaking order, with simultaneous turns grouped rather than
+    // listed in sequence — ties are the finding, not an ordering
+    const spoke = r.turns.filter(function (t) { return t.first !== null; })
+      .sort(function (a, b) { return a.first - b.first || a.rank - b.rank; });
+    const groups = [];
+    spoke.forEach(function (t) {
+      const last = groups[groups.length - 1];
+      if (last && Math.abs(last.t - t.first) < 1e-6) last.names.push(t.agent);
+      else groups.push({ t: t.first, names: [t.agent] });
+    });
+    const order = groups.map(function (g) {
+      return g.names.length > 1 ? g.names.join(" + ") : g.names[0];
+    }).join(" → ");
+    const tied = groups.some(function (g) { return g.names.length > 1; });
+    svg.appendChild(node("text", { x: DET.left, y: H - 10, "font-size": 12,
+      fill: tied ? "var(--warn-ink)" : "var(--ink-2)" },
+      "spoke: " + (order || "—") + (tied ? "   (+ = same engine step)" : "")));
+  }
+
+  function renderFooter() {
+    const s = current().summary;
+    let msg;
+    if (s.tau > 0.9) {
+      msg = "With the designed order handed to the scheduler, every round runs in the intended "
+          + "sequence and the human keeps roughly " + fmt(s.gate_gap, 1) + "s of floor at each gate. "
+          + "The cost is throughput: " + Math.round(s.throughput) + " tokens per second here.";
+    } else if (s.simultaneity > 0.5) {
+      msg = "Under this policy the round mostly arrives at once: " + Math.round(s.simultaneity * 100)
+          + "% of rounds have two or more agents emitting a first token in the same engine step. "
+          + "The designed order is not reordered so much as erased, and the human never gets a turn.";
+    } else {
+      msg = "Memory pressure partly serialises the round, which accidentally restores some of the "
+          + "designed order (τ = " + fmt(s.tau, 2) + "). Scarcity protects the interaction design "
+          + "that abundance destroys — but by accident, not by design.";
+    }
+    el("foot-reading").textContent = msg;
+    el("overview-note").textContent =
+      "One row per round, one dot per agent, positioned at the moment that agent starts speaking. "
+      + "Dots stacked on top of each other mean the agents spoke simultaneously. A staircase means "
+      + "the designed order held.";
+  }
+
+  function render() {
+    buildSeg("seg-policy", ["fcfs", "latency_equalised", "agency_preserving"], POLICY_LABEL, "policy");
+    buildSeg("seg-cond", ["kv_large", "kv_tight"], COND_LABEL, "cond");
+    const n = current().rounds.length;
+    if (state.round >= n) state.round = 0;
+    renderStats(); renderLegend(); renderRibbon(); renderDetail(); renderFooter();
+  }
+
+  render();
+})();
+</script>

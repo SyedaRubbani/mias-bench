@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 .ipynb_checkpoints/
 .DS_Store
+
+# Release archives never belong inside the repository
+*.tar.gz
+*.zip

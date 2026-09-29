@@ -16,4 +16,8 @@ python -m mias.experiments.h3_policy_tradeoff
 echo; echo "== figures =="
 python -m mias.experiments.make_figures
 
+echo; echo "== interactive explorer =="
+python -m mias.experiments.make_viz_data
+python tools/build_viz.py
+
 echo; echo "Done. Results in results/, figures in results/figures/."

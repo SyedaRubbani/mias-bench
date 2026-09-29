@@ -283,3 +283,56 @@ class TestRunScript(unittest.TestCase):
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("--smoke", out.stdout)
+
+
+class TestVisualization(unittest.TestCase):
+    """The explorer must stay buildable and consistent with the data it reads."""
+
+    def test_template_and_build_script_exist(self):
+        import pathlib
+        self.assertTrue(pathlib.Path("viz/explorer.template.html").exists())
+        self.assertTrue(pathlib.Path("tools/build_viz.py").exists())
+
+    def test_build_is_reproducible_and_self_contained(self):
+        import pathlib
+        import subprocess
+        import sys
+        out = subprocess.run([sys.executable, "tools/build_viz.py"],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        html = pathlib.Path("viz/index.html").read_text()
+        self.assertNotIn("__DATA__", html, "data placeholder was not filled")
+        # Nothing may be fetched at view time: the page is opened from an
+        # artifact link and from GitHub, and neither serves a sibling JSON.
+        self.assertNotIn("fetch(", html)
+        self.assertNotIn("XMLHttpRequest", html)
+
+    def test_embedded_data_has_every_field_the_page_reads(self):
+        import json
+        import pathlib
+        import re
+        html = pathlib.Path("viz/index.html").read_text()
+        m = re.search(r'<script id="viz-data" type="application/json">(.*?)</script>',
+                      html, re.S)
+        self.assertIsNotNone(m, "embedded data block missing")
+        data = json.loads(m.group(1).replace("<\\/", "</"))
+        self.assertIn("gate_threshold", data)
+        self.assertEqual(len(data["agents"]), 4)
+        needed = {"agent", "rank", "gate", "arrive", "admit", "first",
+                  "finish", "preempt", "cached", "computed"}
+        for cond in data["conditions"].values():
+            for pol in cond["policies"].values():
+                self.assertTrue(pol["rounds"], "a policy has no rounds")
+                for rnd in pol["rounds"]:
+                    for turn in rnd["turns"]:
+                        self.assertLessEqual(needed, set(turn))
+
+    def test_theme_tokens_are_defined_on_bare_root(self):
+        """A colour defined only inside a media block breaks one theme."""
+        import pathlib
+        import re
+        html = pathlib.Path("viz/index.html").read_text()
+        root = re.search(r":root \{(.*?)\}", html, re.S).group(1)
+        for token in ("--bg", "--ink", "--panel", "--rule", "--accent",
+                      "--a0", "--a1", "--a2", "--a3"):
+            self.assertIn(token + ":", root, f"{token} missing from bare :root")

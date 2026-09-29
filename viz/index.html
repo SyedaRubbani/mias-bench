@@ -1,0 +1,438 @@
+<title>Turn Order Collapse</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+/* Layout: instrument panel — controls and summary above, all-rounds ribbon
+   as the overview, one round expanded below it as the detail. */
+:root {
+  --bg: #fbfbfc;
+  --panel: #ffffff;
+  --ink: #16181d;
+  --ink-2: #4a4f5a;
+  --ink-3: #797f8b;
+  --rule: #e3e5ea;
+  --rule-strong: #c9cdd6;
+  --accent: #2563eb;
+  --warn-bg: #fdeced;
+  --warn-ink: #9f1239;
+  --ok-bg: #eaf5ee;
+  --lane: #f3f4f7;
+
+  --a0: #15803d;   /* analyst     */
+  --a1: #2563eb;   /* critic      */
+  --a2: #d97706;   /* retriever   */
+  --a3: #be185d;   /* summariser  */
+
+  --serif: "Source Serif 4", Georgia, serif;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121418; --panel: #191c22; --ink: #eceef2; --ink-2: #b2b8c4;
+    --ink-3: #848b99; --rule: #2a2e37; --rule-strong: #3d434f;
+    --accent: #60a5fa; --warn-bg: #3a1620; --warn-ink: #fda4af;
+    --ok-bg: #16281d; --lane: #1f232b;
+    --a0: #16a34a; --a1: #3b82f6; --a2: #d97706; --a3: #ec4899;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121418; --panel: #191c22; --ink: #eceef2; --ink-2: #b2b8c4;
+  --ink-3: #848b99; --rule: #2a2e37; --rule-strong: #3d434f;
+  --accent: #60a5fa; --warn-bg: #3a1620; --warn-ink: #fda4af;
+  --ok-bg: #16281d; --lane: #1f232b;
+  --a0: #16a34a; --a1: #3b82f6; --a2: #d97706; --a3: #ec4899;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--sans); font-size: 15px; line-height: 1.55;
+  margin: 0;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 56px; }
+
+header { border-bottom: 1px solid var(--rule); padding-bottom: 22px; }
+h1 {
+  font-family: var(--serif); font-weight: 600; font-size: clamp(26px, 4.2vw, 38px);
+  line-height: 1.12; margin: 0 0 10px; letter-spacing: -0.01em; text-wrap: balance;
+}
+.thesis { margin: 0; max-width: 62ch; color: var(--ink-2); font-size: 16px; }
+.thesis b { color: var(--ink); font-weight: 600; }
+
+.controls {
+  display: flex; flex-wrap: wrap; gap: 18px 26px;
+  margin-top: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--rule);
+}
+.ctl { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.ctl > span {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 500;
+}
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button {
+  font-family: var(--sans); font-size: 13px; color: var(--ink-2);
+  background: var(--panel); border: 1px solid var(--rule-strong);
+  border-radius: 5px; padding: 6px 12px; cursor: pointer;
+}
+.seg button:hover { border-color: var(--accent); color: var(--ink); }
+.seg button[aria-pressed="true"] {
+  background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500;
+}
+.seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 1px;
+  background: var(--rule); border: 1px solid var(--rule); margin-top: 24px; }
+.stat { background: var(--panel); padding: 13px 15px; min-width: 0; }
+.stat dt { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-3); margin: 0 0 4px; }
+.stat dd { margin: 0; font-family: var(--mono); font-size: 21px; font-weight: 500;
+  font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.stat .sub { display: block; font-family: var(--sans); font-size: 11.5px;
+  font-weight: 400; color: var(--ink-3); letter-spacing: 0; margin-top: 2px; }
+.stat.alert dd { color: var(--warn-ink); }
+
+h2 { font-family: var(--serif); font-size: 21px; font-weight: 600; margin: 40px 0 4px; }
+.note { margin: 0 0 16px; color: var(--ink-2); font-size: 14px; max-width: 66ch; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 14px;
+  font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+.scroller { overflow-x: auto; border: 1px solid var(--rule); background: var(--panel); }
+svg { display: block; width: 100%; height: auto; }
+text { font-family: var(--sans); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.rowbtn { cursor: pointer; }
+.rowbtn:hover rect.hit { fill: var(--lane); }
+
+footer { margin-top: 44px; padding-top: 20px; border-top: 1px solid var(--rule);
+  color: var(--ink-3); font-size: 13px; }
+footer a { color: var(--accent); }
+footer p { margin: 0 0 8px; max-width: 70ch; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Turn Order Collapse</h1>
+    <p class="thesis">A mixed-initiative system specifies which agent speaks first. The
+      <b>LLM serving engine decides</b>, on the basis of KV-cache residency, batch composition
+      and preemption. This shows how much of the design survives.</p>
+  </header>
+
+  <div class="controls">
+    <label class="ctl"><span>Scheduling policy</span>
+      <span class="seg" id="seg-policy"></span></label>
+    <label class="ctl"><span>KV pool</span>
+      <span class="seg" id="seg-cond"></span></label>
+  </div>
+
+  <dl class="stats" id="stats"></dl>
+
+  <h2>Every round at a glance</h2>
+  <p class="note" id="overview-note"></p>
+  <div class="legend" id="legend"></div>
+  <div class="scroller"><svg id="ribbon" role="img" aria-labelledby="ribbon-t"><title id="ribbon-t">First-token time of each agent, one row per interaction round</title></svg></div>
+
+  <h2>Inside one round</h2>
+  <p class="note">Each lane is one agent, in designed speaking order. The pale bar is prefill,
+    the solid bar is decoding, and the notch where they meet is the first token — the moment
+    that agent starts speaking. Click any row above to inspect it.</p>
+  <div class="scroller"><svg id="detail" role="img" aria-labelledby="detail-t"><title id="detail-t">Timeline of one interaction round, one lane per agent</title></svg></div>
+
+  <footer>
+    <p id="foot-reading"></p>
+    <p>Simulated with a reference model of vLLM's block-paged KV allocation, prefix caching,
+      continuous batching and LIFO preemption. Timing constants are placeholders, not hardware
+      measurements — see the repository's limitations section.</p>
+    <p><a href="https://github.com/SyedaRubbani/mias-bench">github.com/SyedaRubbani/mias-bench</a></p>
+  </footer>
+</div>
+
+<script id="viz-data" type="application/json">{"agents":[{"name":"analyst","rank":0,"gate":false},{"name":"critic","rank":1,"gate":true},{"name":"retriever","rank":2,"gate":false},{"name":"summariser","rank":3,"gate":true}],"gate_threshold":1.2,"conditions":{"kv_large":{"blocks":4096,"policies":{"fcfs":{"rounds":[{"session":0,"round":0,"t0":1.8121,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.6424,"finish":1.6176,"preempt":0,"cached":0,"computed":102},{"agent":"critic","rank":1,"gate":true,"arrive":0.001,"admit":0.0694,"first":0.6424,"finish":2.4907,"preempt":0,"cached":32,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.002,"admit":0.0694,"first":0.6424,"finish":1.9604,"preempt":0,"cached":32,"computed":70},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0029,"admit":0.0694,"first":0.6424,"finish":2.1334,"preempt":0,"cached":32,"computed":78}]},{"session":0,"round":1,"t0":6.5652,"realised":[1,0,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0023,"admit":0.0522,"first":0.198,"finish":1.0365,"preempt":0,"cached":93,"computed":21},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.0,"first":0.0522,"finish":0.9867,"preempt":0,"cached":94,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0012,"admit":0.0522,"first":0.198,"finish":1.0118,"preempt":0,"cached":92,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.002,"admit":0.0522,"first":0.198,"finish":1.613,"preempt":0,"cached":93,"computed":28}]},{"session":1,"round":0,"t0":18.7426,"realised":[1,0,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0017,"admit":0.0694,"first":0.4055,"finish":2.1169,"preempt":0,"cached":50,"computed":47},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.0,"first":0.3036,"finish":1.4061,"preempt":0,"cached":51,"computed":54},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0043,"admit":0.0694,"first":0.4055,"finish":1.7907,"preempt":0,"cached":49,"computed":51},{"agent":"summariser","rank":3,"gate":true,"arrive":0.001,"admit":0.0694,"first":0.4055,"finish":1.8896,"preempt":0,"cached":50,"computed":48}]},{"session":1,"round":1,"t0":25.2792,"realised":[2,0,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0037,"admit":0.0457,"first":0.1952,"finish":1.1619,"preempt":0,"cached":91,"computed":26},{"agent":"critic","rank":1,"gate":true,"arrive":0.0035,"admit":0.0457,"first":0.1952,"finish":1.1619,"preempt":0,"cached":91,"computed":24},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.0457,"finish":2.3884,"preempt":0,"cached":90,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0037,"admit":0.0457,"first":0.1952,"finish":2.5776,"preempt":0,"cached":91,"computed":25}]},{"session":2,"round":0,"t0":27.0833,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0005,"first":0.5556,"finish":2.2902,"preempt":0,"cached":50,"computed":76},{"agent":"critic","rank":1,"gate":true,"arrive":0.0001,"admit":0.0005,"first":0.5556,"finish":3.0544,"preempt":0,"cached":51,"computed":71},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0004,"admit":0.0005,"first":0.5556,"finish":2.5177,"preempt":0,"cached":49,"computed":67},{"agent":"summariser","rank":3,"gate":true,"arrive":0.004,"admit":0.193,"first":0.5756,"finish":2.352,"preempt":0,"cached":50,"computed":70}]},{"session":2,"round":1,"t0":31.3041,"realised":[2,3,0,1],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0034,"admit":0.0694,"first":0.284,"finish":1.5714,"preempt":0,"cached":112,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0047,"admit":0.0694,"first":0.284,"finish":2.1024,"preempt":0,"cached":113,"computed":34},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.0694,"first":0.2661,"finish":1.4628,"preempt":0,"cached":111,"computed":29},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.2661,"finish":1.7857,"preempt":0,"cached":113,"computed":38}]},{"session":3,"round":0,"t0":28.2168,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0047,"first":0.6191,"finish":2.1814,"preempt":0,"cached":50,"computed":80},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":0.0047,"first":0.6191,"finish":1.7537,"preempt":0,"cached":51,"computed":81},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0017,"admit":0.0047,"first":0.6191,"finish":1.9703,"preempt":0,"cached":49,"computed":74},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0015,"admit":0.0047,"first":0.6191,"finish":1.7282,"preempt":0,"cached":50,"computed":74}]},{"session":3,"round":1,"t0":36.9198,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.004,"first":0.1875,"finish":1.5417,"preempt":0,"cached":116,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0012,"admit":0.004,"first":0.1875,"finish":1.8829,"preempt":0,"cached":117,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.004,"first":0.1875,"finish":1.7758,"preempt":0,"cached":115,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0017,"admit":0.004,"first":0.1875,"finish":1.9885,"preempt":0,"cached":117,"computed":23}]},{"session":4,"round":0,"t0":34.7976,"realised":[3,0,1,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0019,"admit":0.0694,"first":0.3716,"finish":1.995,"preempt":0,"cached":50,"computed":46},{"agent":"critic","rank":1,"gate":true,"arrive":0.0016,"admit":0.0694,"first":0.3716,"finish":2.5396,"preempt":0,"cached":51,"computed":47},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0005,"admit":0.0694,"first":0.3716,"finish":2.6123,"preempt":0,"cached":49,"computed":45},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.2856,"finish":2.0216,"preempt":0,"cached":50,"computed":45}]},{"session":4,"round":1,"t0":40.3593,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0014,"admit":0.004,"first":0.1954,"finish":2.1586,"preempt":0,"cached":85,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.004,"first":0.1954,"finish":2.115,"preempt":0,"cached":86,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.004,"first":0.1954,"finish":1.2529,"preempt":0,"cached":84,"computed":23},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0011,"admit":0.004,"first":0.1954,"finish":2.365,"preempt":0,"cached":86,"computed":26}]},{"session":5,"round":0,"t0":35.5125,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0045,"first":0.5813,"finish":2.4742,"preempt":0,"cached":50,"computed":73},{"agent":"critic","rank":1,"gate":true,"arrive":0.0002,"admit":0.0045,"first":0.5813,"finish":2.3438,"preempt":0,"cached":51,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0038,"admit":0.0045,"first":0.5813,"finish":2.4484,"preempt":0,"cached":49,"computed":73},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0045,"first":0.5813,"finish":2.22,"preempt":0,"cached":50,"computed":73}]},{"session":5,"round":1,"t0":42.1614,"realised":[1,2,3,0],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0028,"first":0.2599,"finish":1.7263,"preempt":0,"cached":114,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0026,"admit":0.0028,"first":0.245,"finish":1.6776,"preempt":0,"cached":115,"computed":31},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0001,"admit":0.0028,"first":0.245,"finish":1.3939,"preempt":0,"cached":114,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0003,"admit":0.0028,"first":0.245,"finish":1.6364,"preempt":0,"cached":115,"computed":32}]},{"session":6,"round":0,"t0":39.1419,"realised":[2,0,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0694,"first":0.314,"finish":1.8955,"preempt":0,"cached":50,"computed":42},{"agent":"critic","rank":1,"gate":true,"arrive":0.0011,"admit":0.0694,"first":0.314,"finish":2.4873,"preempt":0,"cached":51,"computed":39},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.2657,"finish":2.4187,"preempt":0,"cached":49,"computed":35},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0022,"admit":0.0694,"first":0.314,"finish":1.8071,"preempt":0,"cached":50,"computed":38}]},{"session":6,"round":1,"t0":45.737,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.044,"finish":1.7845,"preempt":0,"cached":79,"computed":19},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":0.044,"first":0.1641,"finish":1.5896,"preempt":0,"cached":80,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0034,"admit":0.044,"first":0.1641,"finish":1.293,"preempt":0,"cached":78,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0033,"admit":0.044,"first":0.1641,"finish":0.7746,"preempt":0,"cached":80,"computed":17}]},{"session":7,"round":0,"t0":48.2598,"realised":[2,1,0,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0021,"admit":0.0694,"first":0.5221,"finish":2.1028,"preempt":0,"cached":50,"computed":65},{"agent":"critic","rank":1,"gate":true,"arrive":0.0034,"admit":0.0694,"first":0.5083,"finish":1.7212,"preempt":0,"cached":51,"computed":62},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.3203,"finish":1.5482,"preempt":0,"cached":49,"computed":63},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0026,"admit":0.0694,"first":0.5221,"finish":1.5482,"preempt":0,"cached":50,"computed":67}]},{"session":7,"round":1,"t0":54.0191,"realised":[3,1,2,0],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0026,"admit":0.0661,"first":0.252,"finish":1.6851,"preempt":0,"cached":105,"computed":33},{"agent":"critic","rank":1,"gate":true,"arrive":0.0028,"admit":0.0661,"first":0.2434,"finish":2.0064,"preempt":0,"cached":106,"computed":29},{"agent":"retriever","rank":2,"gate":false,"arrive":0.003,"admit":0.0661,"first":0.2434,"finish":1.8927,"preempt":0,"cached":104,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.0661,"finish":1.7938,"preempt":0,"cached":105,"computed":31}]}],"summary":{"tau":-0.1042,"simultaneity":1.0,"displacement":1.0,"gate_gap":-0.0003,"throughput":192.63,"preemptions":0,"cache_hit":0.6272}},"latency_equalised":{"rounds":[{"session":0,"round":0,"t0":1.8121,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.6424,"finish":1.6176,"preempt":0,"cached":0,"computed":102},{"agent":"critic","rank":1,"gate":true,"arrive":0.001,"admit":0.0694,"first":0.6424,"finish":2.4907,"preempt":0,"cached":32,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.002,"admit":0.0694,"first":0.6424,"finish":1.9604,"preempt":0,"cached":32,"computed":70},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0029,"admit":0.0694,"first":0.6424,"finish":2.1334,"preempt":0,"cached":32,"computed":78}]},{"session":0,"round":1,"t0":6.5652,"realised":[1,0,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0023,"admit":0.0522,"first":0.198,"finish":1.0365,"preempt":0,"cached":93,"computed":21},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.0,"first":0.0522,"finish":0.9867,"preempt":0,"cached":94,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0012,"admit":0.0522,"first":0.198,"finish":1.0118,"preempt":0,"cached":92,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.002,"admit":0.0522,"first":0.198,"finish":1.613,"preempt":0,"cached":93,"computed":28}]},{"session":1,"round":0,"t0":18.7426,"realised":[1,0,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0017,"admit":0.0694,"first":0.4055,"finish":2.1169,"preempt":0,"cached":50,"computed":47},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.0,"first":0.3036,"finish":1.4061,"preempt":0,"cached":51,"computed":54},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0043,"admit":0.0694,"first":0.4055,"finish":1.7907,"preempt":0,"cached":49,"computed":51},{"agent":"summariser","rank":3,"gate":true,"arrive":0.001,"admit":0.0694,"first":0.4055,"finish":1.8896,"preempt":0,"cached":50,"computed":48}]},{"session":1,"round":1,"t0":25.2792,"realised":[2,0,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0037,"admit":0.0457,"first":0.1952,"finish":1.1619,"preempt":0,"cached":91,"computed":26},{"agent":"critic","rank":1,"gate":true,"arrive":0.0035,"admit":0.0457,"first":0.1952,"finish":1.1619,"preempt":0,"cached":91,"computed":24},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.0457,"finish":2.3884,"preempt":0,"cached":90,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0037,"admit":0.0457,"first":0.1952,"finish":2.5776,"preempt":0,"cached":91,"computed":25}]},{"session":2,"round":0,"t0":27.0833,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0005,"first":0.5556,"finish":2.2902,"preempt":0,"cached":50,"computed":76},{"agent":"critic","rank":1,"gate":true,"arrive":0.0001,"admit":0.0005,"first":0.5556,"finish":3.0544,"preempt":0,"cached":51,"computed":71},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0004,"admit":0.0005,"first":0.5556,"finish":2.5177,"preempt":0,"cached":49,"computed":67},{"agent":"summariser","rank":3,"gate":true,"arrive":0.004,"admit":0.193,"first":0.5756,"finish":2.352,"preempt":0,"cached":50,"computed":70}]},{"session":2,"round":1,"t0":31.3041,"realised":[2,3,0,1],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0034,"admit":0.0694,"first":0.284,"finish":1.5714,"preempt":0,"cached":112,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0047,"admit":0.0694,"first":0.284,"finish":2.1024,"preempt":0,"cached":113,"computed":34},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.0694,"first":0.2661,"finish":1.4628,"preempt":0,"cached":111,"computed":29},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.2661,"finish":1.7857,"preempt":0,"cached":113,"computed":38}]},{"session":3,"round":0,"t0":28.2168,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0047,"first":0.6191,"finish":2.1814,"preempt":0,"cached":50,"computed":80},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":0.0047,"first":0.6191,"finish":1.7537,"preempt":0,"cached":51,"computed":81},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0017,"admit":0.0047,"first":0.6191,"finish":1.9703,"preempt":0,"cached":49,"computed":74},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0015,"admit":0.0047,"first":0.6191,"finish":1.7282,"preempt":0,"cached":50,"computed":74}]},{"session":3,"round":1,"t0":36.9198,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.004,"first":0.1875,"finish":1.5417,"preempt":0,"cached":116,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0012,"admit":0.004,"first":0.1875,"finish":1.8829,"preempt":0,"cached":117,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.004,"first":0.1875,"finish":1.7758,"preempt":0,"cached":115,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0017,"admit":0.004,"first":0.1875,"finish":1.9885,"preempt":0,"cached":117,"computed":23}]},{"session":4,"round":0,"t0":34.7976,"realised":[3,0,1,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0019,"admit":0.0694,"first":0.3716,"finish":1.995,"preempt":0,"cached":50,"computed":46},{"agent":"critic","rank":1,"gate":true,"arrive":0.0016,"admit":0.0694,"first":0.3716,"finish":2.5396,"preempt":0,"cached":51,"computed":47},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0005,"admit":0.0694,"first":0.3716,"finish":2.6123,"preempt":0,"cached":49,"computed":45},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.2856,"finish":2.0216,"preempt":0,"cached":50,"computed":45}]},{"session":4,"round":1,"t0":40.3593,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0014,"admit":0.004,"first":0.1954,"finish":2.1586,"preempt":0,"cached":85,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.004,"first":0.1954,"finish":2.115,"preempt":0,"cached":86,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.004,"first":0.1954,"finish":1.2529,"preempt":0,"cached":84,"computed":23},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0011,"admit":0.004,"first":0.1954,"finish":2.365,"preempt":0,"cached":86,"computed":26}]},{"session":5,"round":0,"t0":35.5125,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0045,"first":0.5813,"finish":2.4742,"preempt":0,"cached":50,"computed":73},{"agent":"critic","rank":1,"gate":true,"arrive":0.0002,"admit":0.0045,"first":0.5813,"finish":2.3438,"preempt":0,"cached":51,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0038,"admit":0.0045,"first":0.5813,"finish":2.4484,"preempt":0,"cached":49,"computed":73},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0045,"first":0.5813,"finish":2.22,"preempt":0,"cached":50,"computed":73}]},{"session":5,"round":1,"t0":42.1614,"realised":[1,2,3,0],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0028,"first":0.2599,"finish":1.7263,"preempt":0,"cached":114,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0026,"admit":0.0028,"first":0.245,"finish":1.6776,"preempt":0,"cached":115,"computed":31},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0001,"admit":0.0028,"first":0.245,"finish":1.3939,"preempt":0,"cached":114,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0003,"admit":0.0028,"first":0.245,"finish":1.6364,"preempt":0,"cached":115,"computed":32}]},{"session":6,"round":0,"t0":39.1419,"realised":[2,0,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0694,"first":0.314,"finish":1.8955,"preempt":0,"cached":50,"computed":42},{"agent":"critic","rank":1,"gate":true,"arrive":0.0011,"admit":0.0694,"first":0.314,"finish":2.4873,"preempt":0,"cached":51,"computed":39},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.2657,"finish":2.4187,"preempt":0,"cached":49,"computed":35},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0022,"admit":0.0694,"first":0.314,"finish":1.8071,"preempt":0,"cached":50,"computed":38}]},{"session":6,"round":1,"t0":45.737,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.044,"finish":1.7845,"preempt":0,"cached":79,"computed":19},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":0.044,"first":0.1641,"finish":1.5896,"preempt":0,"cached":80,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0034,"admit":0.044,"first":0.1641,"finish":1.293,"preempt":0,"cached":78,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0033,"admit":0.044,"first":0.1641,"finish":0.7746,"preempt":0,"cached":80,"computed":17}]},{"session":7,"round":0,"t0":48.2598,"realised":[2,1,0,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0021,"admit":0.0694,"first":0.5221,"finish":2.1028,"preempt":0,"cached":50,"computed":65},{"agent":"critic","rank":1,"gate":true,"arrive":0.0034,"admit":0.0694,"first":0.5083,"finish":1.7212,"preempt":0,"cached":51,"computed":62},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.3203,"finish":1.5482,"preempt":0,"cached":49,"computed":63},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0026,"admit":0.0694,"first":0.5221,"finish":1.5482,"preempt":0,"cached":50,"computed":67}]},{"session":7,"round":1,"t0":54.0191,"realised":[3,1,2,0],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0026,"admit":0.0661,"first":0.252,"finish":1.6851,"preempt":0,"cached":105,"computed":33},{"agent":"critic","rank":1,"gate":true,"arrive":0.0028,"admit":0.0661,"first":0.2434,"finish":2.0064,"preempt":0,"cached":106,"computed":29},{"agent":"retriever","rank":2,"gate":false,"arrive":0.003,"admit":0.0661,"first":0.2434,"finish":1.8927,"preempt":0,"cached":104,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.0661,"finish":1.7938,"preempt":0,"cached":105,"computed":31}]}],"summary":{"tau":-0.1042,"simultaneity":1.0,"displacement":1.0,"gate_gap":-0.0003,"throughput":192.63,"preemptions":0,"cache_hit":0.6272}},"agency_preserving":{"rounds":[{"session":0,"round":0,"t0":1.8121,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.2269,"finish":1.1607,"preempt":0,"cached":0,"computed":102},{"agent":"critic","rank":1,"gate":true,"arrive":0.001,"admit":1.4269,"first":1.5837,"finish":3.688,"preempt":0,"cached":32,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.002,"admit":1.5837,"first":1.7415,"finish":3.1771,"preempt":0,"cached":32,"computed":70},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0029,"admit":2.9446,"first":3.1186,"finish":4.5649,"preempt":0,"cached":32,"computed":78}]},{"session":0,"round":1,"t0":6.5652,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0023,"admit":0.0023,"first":0.0493,"finish":0.8532,"preempt":0,"cached":93,"computed":21},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":1.2493,"first":1.3015,"finish":2.1209,"preempt":0,"cached":94,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0012,"admit":1.3015,"first":1.3546,"finish":2.1453,"preempt":0,"cached":92,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.002,"admit":2.5546,"first":2.6163,"finish":3.9967,"preempt":0,"cached":93,"computed":28}]},{"session":1,"round":0,"t0":18.7426,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0017,"admit":0.0017,"first":0.1073,"finish":1.9773,"preempt":0,"cached":50,"computed":47},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":1.309,"first":1.4286,"finish":2.5129,"preempt":0,"cached":51,"computed":54},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0043,"admit":1.4286,"first":1.5426,"finish":2.9875,"preempt":0,"cached":49,"computed":51},{"agent":"summariser","rank":3,"gate":true,"arrive":0.001,"admit":2.7484,"first":2.8556,"finish":4.2867,"preempt":0,"cached":50,"computed":48}]},{"session":1,"round":1,"t0":25.2792,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0037,"admit":0.0037,"first":0.0607,"finish":0.9863,"preempt":0,"cached":91,"computed":26},{"agent":"critic","rank":1,"gate":true,"arrive":0.0035,"admit":1.2607,"first":1.314,"finish":2.4426,"preempt":0,"cached":91,"computed":24},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":1.314,"first":1.3598,"finish":3.6204,"preempt":0,"cached":90,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0037,"admit":2.5662,"first":2.6215,"finish":5.3409,"preempt":0,"cached":91,"computed":25}]},{"session":2,"round":0,"t0":27.0833,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0007,"first":0.1704,"finish":1.7217,"preempt":0,"cached":50,"computed":76},{"agent":"critic","rank":1,"gate":true,"arrive":0.0001,"admit":1.3728,"first":1.5338,"finish":3.9697,"preempt":0,"cached":51,"computed":71},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0004,"admit":1.5338,"first":1.6868,"finish":3.4584,"preempt":0,"cached":49,"computed":67},{"agent":"summariser","rank":3,"gate":true,"arrive":0.004,"admit":2.8915,"first":3.0517,"finish":4.4317,"preempt":0,"cached":50,"computed":70}]},{"session":2,"round":1,"t0":31.3041,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0034,"admit":0.0159,"first":0.1006,"finish":1.4741,"preempt":0,"cached":112,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0047,"admit":1.3057,"first":1.3865,"finish":3.3012,"preempt":0,"cached":113,"computed":34},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":1.3865,"first":1.449,"finish":2.603,"preempt":0,"cached":111,"computed":29},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":2.6517,"first":2.7409,"finish":4.4399,"preempt":0,"cached":113,"computed":38}]},{"session":3,"round":0,"t0":28.2168,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0016,"first":0.1799,"finish":2.4291,"preempt":0,"cached":50,"computed":80},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":1.3866,"first":1.5658,"finish":3.0761,"preempt":0,"cached":51,"computed":81},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0017,"admit":1.5658,"first":1.7318,"finish":3.4068,"preempt":0,"cached":49,"computed":74},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0015,"admit":2.9365,"first":3.1032,"finish":4.2144,"preempt":0,"cached":50,"computed":74}]},{"session":3,"round":1,"t0":36.9198,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0409,"first":0.1553,"finish":1.9603,"preempt":0,"cached":116,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0012,"admit":1.3569,"first":1.407,"finish":3.3912,"preempt":0,"cached":117,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":1.407,"first":1.4599,"finish":3.2909,"preempt":0,"cached":115,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0017,"admit":2.6628,"first":2.7154,"finish":4.6708,"preempt":0,"cached":117,"computed":23}]},{"session":4,"round":0,"t0":34.7976,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0019,"admit":0.0025,"first":0.1053,"finish":1.2512,"preempt":0,"cached":50,"computed":46},{"agent":"critic","rank":1,"gate":true,"arrive":0.0016,"admit":1.308,"first":1.4145,"finish":3.2998,"preempt":0,"cached":51,"computed":47},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0005,"admit":1.4145,"first":1.5164,"finish":3.3858,"preempt":0,"cached":49,"computed":45},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":2.7225,"first":2.8253,"finish":4.1523,"preempt":0,"cached":50,"computed":45}]},{"session":4,"round":1,"t0":40.3593,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0014,"admit":0.0094,"first":0.0632,"finish":2.1381,"preempt":0,"cached":85,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":1.2647,"first":1.3172,"finish":3.3327,"preempt":0,"cached":86,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":1.3172,"first":1.3692,"finish":2.5532,"preempt":0,"cached":84,"computed":23},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0011,"admit":2.5699,"first":2.6281,"finish":4.6748,"preempt":0,"cached":86,"computed":26}]},{"session":5,"round":0,"t0":35.5125,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0084,"first":0.1729,"finish":2.3757,"preempt":0,"cached":50,"computed":73},{"agent":"critic","rank":1,"gate":true,"arrive":0.0002,"admit":1.3784,"first":1.5819,"finish":3.575,"preempt":0,"cached":51,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0038,"admit":1.5819,"first":1.7461,"finish":3.7818,"preempt":0,"cached":49,"computed":73},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":2.9544,"first":3.1201,"finish":4.6473,"preempt":0,"cached":50,"computed":73}]},{"session":5,"round":1,"t0":42.1614,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0035,"first":0.0885,"finish":1.7341,"preempt":0,"cached":114,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0026,"admit":1.2908,"first":1.3573,"finish":2.8809,"preempt":0,"cached":115,"computed":31},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0001,"admit":1.3573,"first":1.4188,"finish":2.545,"preempt":0,"cached":114,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0003,"admit":2.6192,"first":2.6887,"finish":4.0601,"preempt":0,"cached":115,"computed":32}]},{"session":6,"round":0,"t0":39.1419,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.005,"first":0.1008,"finish":1.7109,"preempt":0,"cached":50,"computed":42},{"agent":"critic","rank":1,"gate":true,"arrive":0.0011,"admit":1.3057,"first":1.3964,"finish":3.6689,"preempt":0,"cached":51,"computed":39},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":1.3964,"first":1.4787,"finish":3.6259,"preempt":0,"cached":49,"computed":35},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0022,"admit":2.6812,"first":2.7701,"finish":4.2017,"preempt":0,"cached":50,"computed":38}]},{"session":6,"round":1,"t0":45.737,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0036,"first":0.0478,"finish":1.7278,"preempt":0,"cached":79,"computed":19},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":1.2559,"first":1.3059,"finish":2.9083,"preempt":0,"cached":80,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0034,"admit":1.3059,"first":1.3516,"finish":2.4611,"preempt":0,"cached":78,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0033,"admit":2.5956,"first":2.6978,"finish":3.2956,"preempt":0,"cached":80,"computed":17}]},{"session":7,"round":0,"t0":48.2598,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0021,"admit":0.0033,"first":0.1848,"finish":1.9787,"preempt":0,"cached":50,"computed":65},{"agent":"critic","rank":1,"gate":true,"arrive":0.0034,"admit":1.3899,"first":1.5246,"finish":2.8253,"preempt":0,"cached":51,"computed":62},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":1.5246,"first":1.661,"finish":2.6791,"preempt":0,"cached":49,"computed":63},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0026,"admit":2.861,"first":3.0119,"finish":3.9944,"preempt":0,"cached":50,"computed":67}]},{"session":7,"round":1,"t0":54.0191,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0026,"admit":0.0026,"first":0.0803,"finish":1.565,"preempt":0,"cached":105,"computed":33},{"agent":"critic","rank":1,"gate":true,"arrive":0.0028,"admit":1.2821,"first":1.3445,"finish":3.1862,"preempt":0,"cached":106,"computed":29},{"agent":"retriever","rank":2,"gate":false,"arrive":0.003,"admit":1.3445,"first":1.4062,"finish":3.0791,"preempt":0,"cached":104,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":2.6115,"first":2.6778,"finish":4.185,"preempt":0,"cached":105,"computed":31}]}],"summary":{"tau":1.0,"simultaneity":0.0,"displacement":0.0,"gate_gap":1.3074,"throughput":185.19,"preemptions":0,"cache_hit":0.6272}}}},"kv_tight":{"blocks":448,"policies":{"fcfs":{"rounds":[{"session":0,"round":0,"t0":1.8121,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.6424,"finish":1.6176,"preempt":0,"cached":0,"computed":102},{"agent":"critic","rank":1,"gate":true,"arrive":0.001,"admit":0.0694,"first":0.6424,"finish":2.4907,"preempt":0,"cached":32,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.002,"admit":0.0694,"first":0.6424,"finish":1.9604,"preempt":0,"cached":32,"computed":70},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0029,"admit":0.0694,"first":0.6424,"finish":2.1334,"preempt":0,"cached":32,"computed":78}]},{"session":0,"round":1,"t0":6.5652,"realised":[1,0,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0023,"admit":0.0522,"first":0.198,"finish":1.0365,"preempt":0,"cached":93,"computed":21},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.0,"first":0.0522,"finish":0.9867,"preempt":0,"cached":94,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0012,"admit":0.0522,"first":0.198,"finish":1.0118,"preempt":0,"cached":92,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.002,"admit":0.0522,"first":0.198,"finish":1.613,"preempt":0,"cached":93,"computed":28}]},{"session":1,"round":0,"t0":18.7426,"realised":[1,0,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0017,"admit":0.0694,"first":0.4055,"finish":2.1169,"preempt":0,"cached":50,"computed":47},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.0,"first":0.3036,"finish":1.4061,"preempt":0,"cached":51,"computed":54},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0043,"admit":0.0694,"first":0.4055,"finish":1.7907,"preempt":0,"cached":49,"computed":51},{"agent":"summariser","rank":3,"gate":true,"arrive":0.001,"admit":0.0694,"first":0.4055,"finish":1.8896,"preempt":0,"cached":50,"computed":48}]},{"session":1,"round":1,"t0":25.2792,"realised":[2,0,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0037,"admit":0.0457,"first":0.1952,"finish":1.1619,"preempt":0,"cached":91,"computed":26},{"agent":"critic","rank":1,"gate":true,"arrive":0.0035,"admit":0.0457,"first":0.1952,"finish":1.1619,"preempt":0,"cached":91,"computed":24},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.0457,"finish":1.991,"preempt":0,"cached":90,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0037,"admit":0.0457,"first":0.1952,"finish":2.176,"preempt":0,"cached":91,"computed":25}]},{"session":2,"round":0,"t0":27.0833,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0005,"first":0.1702,"finish":1.4011,"preempt":0,"cached":50,"computed":76},{"agent":"critic","rank":1,"gate":true,"arrive":0.0001,"admit":0.1869,"first":0.1963,"finish":2.1731,"preempt":5,"cached":121,"computed":1},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0004,"admit":0.3719,"first":0.442,"finish":1.8289,"preempt":22,"cached":115,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.004,"admit":1.4011,"first":0.5314,"finish":2.5493,"preempt":31,"cached":119,"computed":1}]},{"session":2,"round":1,"t0":31.3041,"realised":[2,0,1],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0034,"admit":0.0035,"first":0.2038,"finish":1.6707,"preempt":0,"cached":112,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0047,"admit":0.7004,"first":0.9091,"finish":2.7172,"preempt":0,"cached":51,"computed":96},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.0035,"first":0.1889,"finish":1.5621,"preempt":0,"cached":111,"computed":29},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":1.4688,"first":null,"finish":2.9365,"preempt":65,"cached":151,"computed":0}]},{"session":3,"round":0,"t0":28.2168,"realised":[0,1,3,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.6954,"first":0.7052,"finish":2.3821,"preempt":51,"cached":129,"computed":1},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":1.0396,"first":1.0479,"finish":2.1162,"preempt":41,"cached":131,"computed":1},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0017,"admit":2.1162,"first":2.3153,"finish":3.7877,"preempt":0,"cached":32,"computed":91},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0015,"admit":2.1162,"first":2.1873,"finish":3.5285,"preempt":130,"cached":123,"computed":1}]},{"session":3,"round":1,"t0":36.9198,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":1.2013,"first":1.2958,"finish":2.7497,"preempt":0,"cached":116,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0012,"admit":1.2013,"first":1.2958,"finish":3.0875,"preempt":0,"cached":117,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":2.7497,"first":1.9997,"finish":4.5339,"preempt":1,"cached":138,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0017,"admit":3.0875,"first":3.3603,"finish":5.2502,"preempt":0,"cached":50,"computed":90}]},{"session":4,"round":0,"t0":34.7976,"realised":[3,0,1,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0019,"admit":0.0694,"first":0.3716,"finish":1.4062,"preempt":0,"cached":50,"computed":46},{"agent":"critic","rank":1,"gate":true,"arrive":0.0016,"admit":0.0694,"first":0.3716,"finish":1.8826,"preempt":0,"cached":51,"computed":47},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0005,"admit":0.0694,"first":0.3716,"finish":2.089,"preempt":0,"cached":49,"computed":45},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.2856,"finish":1.565,"preempt":0,"cached":50,"computed":45}]},{"session":4,"round":1,"t0":40.3593,"realised":[1,0,3,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0014,"admit":1.8107,"first":1.9263,"finish":3.9295,"preempt":0,"cached":85,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":1.3625,"first":1.4151,"finish":3.2971,"preempt":0,"cached":86,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":2.796,"first":2.8497,"finish":4.0633,"preempt":0,"cached":84,"computed":23},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0011,"admit":3.2971,"first":1.9923,"finish":5.9015,"preempt":2,"cached":111,"computed":1}]},{"session":5,"round":0,"t0":35.5125,"realised":[1,0,3,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":1.1678,"first":1.3323,"finish":3.1695,"preempt":0,"cached":50,"computed":73},{"agent":"critic","rank":1,"gate":true,"arrive":0.0002,"admit":0.6914,"first":0.8501,"finish":2.6086,"preempt":0,"cached":51,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0038,"admit":1.3741,"first":1.5385,"finish":3.2113,"preempt":0,"cached":49,"computed":73},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":4.4948,"first":1.4451,"finish":6.2093,"preempt":455,"cached":122,"computed":1}]},{"session":5,"round":1,"t0":42.1614,"realised":[0,2,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":1.7443,"first":1.9663,"finish":3.644,"preempt":0,"cached":51,"computed":99},{"agent":"critic","rank":1,"gate":true,"arrive":0.0026,"admit":3.644,"first":3.974,"finish":5.6839,"preempt":0,"cached":51,"computed":95},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0001,"admit":2.2611,"first":2.4541,"finish":3.5743,"preempt":0,"cached":54,"computed":88},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0003,"admit":3.5743,"first":3.974,"finish":5.5121,"preempt":0,"cached":50,"computed":97}]},{"session":6,"round":0,"t0":39.1419,"realised":[1,2,0,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":2.3119,"first":2.4085,"finish":4.0134,"preempt":0,"cached":50,"computed":42},{"agent":"critic","rank":1,"gate":true,"arrive":0.0011,"admit":2.3119,"first":1.0799,"finish":4.6366,"preempt":3,"cached":89,"computed":1},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":2.5799,"first":2.3826,"finish":4.7638,"preempt":144,"cached":83,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0022,"admit":7.119,"first":7.2508,"finish":8.7034,"preempt":434,"cached":87,"computed":1}]},{"session":6,"round":1,"t0":45.737,"realised":[0,1,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":1.9366,"first":0.6959,"finish":4.0356,"preempt":4,"cached":97,"computed":1},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":1.9366,"first":0.6959,"finish":3.7024,"preempt":127,"cached":101,"computed":1},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0034,"admit":1.9366,"first":2.0909,"finish":3.4132,"preempt":0,"cached":32,"computed":66},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0033,"admit":1.9366,"first":null,"finish":2.7379,"preempt":17,"cached":97,"computed":0}]},{"session":7,"round":0,"t0":48.2598,"realised":[0,2,3,1],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0021,"admit":0.2151,"first":0.3647,"finish":2.0891,"preempt":0,"cached":50,"computed":65},{"agent":"critic","rank":1,"gate":true,"arrive":0.0034,"admit":1.1796,"first":1.315,"finish":2.5169,"preempt":0,"cached":51,"computed":62},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.8904,"first":0.8997,"finish":2.064,"preempt":82,"cached":111,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0026,"admit":1.4526,"first":1.2495,"finish":2.4763,"preempt":35,"cached":116,"computed":1}]},{"session":7,"round":1,"t0":54.0191,"realised":[3,1,2,0],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0026,"admit":0.0661,"first":0.252,"finish":1.6851,"preempt":0,"cached":105,"computed":33},{"agent":"critic","rank":1,"gate":true,"arrive":0.0028,"admit":0.0661,"first":0.2434,"finish":2.0064,"preempt":0,"cached":106,"computed":29},{"agent":"retriever","rank":2,"gate":false,"arrive":0.003,"admit":0.0661,"first":0.2434,"finish":1.8927,"preempt":0,"cached":104,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.0661,"finish":1.7938,"preempt":0,"cached":105,"computed":31}]}],"summary":{"tau":0.2188,"simultaneity":0.5625,"displacement":0.8667,"gate_gap":0.2816,"throughput":192.63,"preemptions":1649,"cache_hit":0.7664}},"latency_equalised":{"rounds":[{"session":0,"round":0,"t0":1.8121,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.6424,"finish":1.6176,"preempt":0,"cached":0,"computed":102},{"agent":"critic","rank":1,"gate":true,"arrive":0.001,"admit":0.0694,"first":0.6424,"finish":2.4907,"preempt":0,"cached":32,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.002,"admit":0.0694,"first":0.6424,"finish":1.9604,"preempt":0,"cached":32,"computed":70},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0029,"admit":0.0694,"first":0.6424,"finish":2.1334,"preempt":0,"cached":32,"computed":78}]},{"session":0,"round":1,"t0":6.5652,"realised":[1,0,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0023,"admit":0.0522,"first":0.198,"finish":1.0365,"preempt":0,"cached":93,"computed":21},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.0,"first":0.0522,"finish":0.9867,"preempt":0,"cached":94,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0012,"admit":0.0522,"first":0.198,"finish":1.0118,"preempt":0,"cached":92,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.002,"admit":0.0522,"first":0.198,"finish":1.613,"preempt":0,"cached":93,"computed":28}]},{"session":1,"round":0,"t0":18.7426,"realised":[1,0,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0017,"admit":0.0694,"first":0.4055,"finish":2.1169,"preempt":0,"cached":50,"computed":47},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":0.0,"first":0.3036,"finish":1.4061,"preempt":0,"cached":51,"computed":54},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0043,"admit":0.0694,"first":0.4055,"finish":1.7907,"preempt":0,"cached":49,"computed":51},{"agent":"summariser","rank":3,"gate":true,"arrive":0.001,"admit":0.0694,"first":0.4055,"finish":1.8896,"preempt":0,"cached":50,"computed":48}]},{"session":1,"round":1,"t0":25.2792,"realised":[2,0,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0037,"admit":0.0457,"first":0.1952,"finish":1.1619,"preempt":0,"cached":91,"computed":26},{"agent":"critic","rank":1,"gate":true,"arrive":0.0035,"admit":0.0457,"first":0.1952,"finish":1.1619,"preempt":0,"cached":91,"computed":24},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.0457,"finish":2.1073,"preempt":0,"cached":90,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0037,"admit":0.0457,"first":0.1952,"finish":2.3007,"preempt":0,"cached":91,"computed":25}]},{"session":2,"round":0,"t0":27.0833,"realised":[1,0,3,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.1608,"first":0.2331,"finish":1.5592,"preempt":2,"cached":125,"computed":1},{"agent":"critic","rank":1,"gate":true,"arrive":0.0001,"admit":0.0005,"first":0.1608,"finish":2.3201,"preempt":0,"cached":51,"computed":71},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0004,"admit":0.1608,"first":0.316,"finish":1.8041,"preempt":0,"cached":49,"computed":67},{"agent":"summariser","rank":3,"gate":true,"arrive":0.004,"admit":0.1608,"first":0.2331,"finish":1.6122,"preempt":1,"cached":119,"computed":1}]},{"session":2,"round":1,"t0":31.3041,"realised":[2,3,0,1],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0034,"admit":0.0694,"first":0.284,"finish":1.5714,"preempt":0,"cached":112,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0047,"admit":0.0694,"first":0.284,"finish":2.1024,"preempt":0,"cached":113,"computed":34},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.0694,"first":0.2661,"finish":1.4628,"preempt":0,"cached":111,"computed":29},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.2661,"finish":1.7857,"preempt":0,"cached":113,"computed":38}]},{"session":3,"round":0,"t0":28.2168,"realised":[0,1,3,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0499,"first":0.1231,"finish":1.7475,"preempt":1,"cached":129,"computed":1},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":0.0499,"first":0.1231,"finish":1.3219,"preempt":3,"cached":131,"computed":1},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0017,"admit":0.0499,"first":0.2196,"finish":1.5526,"preempt":0,"cached":49,"computed":74},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0015,"admit":0.0499,"first":0.1231,"finish":1.2968,"preempt":1,"cached":123,"computed":1}]},{"session":3,"round":1,"t0":36.9198,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0028,"first":0.186,"finish":1.511,"preempt":0,"cached":116,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0012,"admit":0.0028,"first":0.186,"finish":1.8522,"preempt":0,"cached":117,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.0028,"first":0.186,"finish":1.7451,"preempt":0,"cached":115,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0017,"admit":0.0028,"first":0.186,"finish":1.9578,"preempt":0,"cached":117,"computed":23}]},{"session":4,"round":0,"t0":34.7976,"realised":[3,0,1,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0019,"admit":0.0694,"first":0.3716,"finish":1.5796,"preempt":0,"cached":50,"computed":46},{"agent":"critic","rank":1,"gate":true,"arrive":0.0016,"admit":0.0694,"first":0.3716,"finish":1.9375,"preempt":0,"cached":51,"computed":47},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0005,"admit":0.0694,"first":0.3716,"finish":2.0063,"preempt":0,"cached":49,"computed":45},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.2856,"finish":1.6061,"preempt":0,"cached":50,"computed":45}]},{"session":4,"round":1,"t0":40.3593,"realised":[0,1,3,2],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0014,"admit":2.0544,"first":0.1519,"finish":3.7996,"preempt":5,"cached":108,"computed":1},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":2.3177,"first":0.1519,"finish":3.9974,"preempt":1,"cached":109,"computed":0},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":0.1519,"first":0.2042,"finish":1.2621,"preempt":0,"cached":84,"computed":23},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0011,"admit":0.004,"first":0.1519,"finish":2.3177,"preempt":0,"cached":86,"computed":26}]},{"session":5,"round":0,"t0":35.5125,"realised":[0,2,3,1],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0299,"first":0.1028,"finish":2.0449,"preempt":1,"cached":122,"computed":1},{"agent":"critic","rank":1,"gate":true,"arrive":0.0002,"admit":0.0299,"first":0.1928,"finish":1.9319,"preempt":0,"cached":51,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0038,"admit":0.0299,"first":0.1028,"finish":2.0191,"preempt":1,"cached":121,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0299,"first":0.1028,"finish":1.7905,"preempt":1,"cached":122,"computed":1}]},{"session":5,"round":1,"t0":42.1614,"realised":[3,0,2,1],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0195,"first":0.2181,"finish":1.7384,"preempt":0,"cached":114,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0026,"admit":0.2523,"first":0.2627,"finish":1.7384,"preempt":1,"cached":145,"computed":1},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0001,"admit":0.1505,"first":0.2181,"finish":1.3996,"preempt":0,"cached":114,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0003,"admit":0.0195,"first":0.1505,"finish":1.6438,"preempt":0,"cached":115,"computed":32}]},{"session":6,"round":0,"t0":39.1419,"realised":[2,0,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0694,"first":0.314,"finish":1.8953,"preempt":0,"cached":50,"computed":42},{"agent":"critic","rank":1,"gate":true,"arrive":0.0011,"admit":0.0694,"first":0.314,"finish":2.4881,"preempt":0,"cached":51,"computed":39},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":3.5352,"first":0.2657,"finish":5.4584,"preempt":32,"cached":83,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0022,"admit":0.0694,"first":0.314,"finish":1.8069,"preempt":0,"cached":50,"computed":38}]},{"session":6,"round":1,"t0":45.737,"realised":[0,2,1,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.268,"finish":1.9614,"preempt":0,"cached":50,"computed":48},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":0.0694,"first":0.3412,"finish":1.7666,"preempt":0,"cached":51,"computed":51},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0034,"admit":0.0694,"first":0.268,"finish":1.4617,"preempt":0,"cached":78,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0033,"admit":0.0694,"first":0.3412,"finish":0.9517,"preempt":0,"cached":50,"computed":47}]},{"session":7,"round":0,"t0":48.2598,"realised":[2,1,0,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0021,"admit":0.0694,"first":0.5221,"finish":2.1028,"preempt":0,"cached":50,"computed":65},{"agent":"critic","rank":1,"gate":true,"arrive":0.0034,"admit":0.0694,"first":0.5083,"finish":1.7212,"preempt":0,"cached":51,"computed":62},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":0.0,"first":0.3203,"finish":1.5482,"preempt":0,"cached":49,"computed":63},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0026,"admit":0.0694,"first":0.5221,"finish":1.5482,"preempt":0,"cached":50,"computed":67}]},{"session":7,"round":1,"t0":54.0191,"realised":[3,1,2,0],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0026,"admit":0.0661,"first":0.252,"finish":1.6866,"preempt":0,"cached":105,"computed":33},{"agent":"critic","rank":1,"gate":true,"arrive":0.0028,"admit":0.0661,"first":0.2434,"finish":2.0095,"preempt":0,"cached":106,"computed":29},{"agent":"retriever","rank":2,"gate":false,"arrive":0.003,"admit":1.4646,"first":0.2434,"finish":3.0651,"preempt":1,"cached":131,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":0.0,"first":0.0661,"finish":1.7952,"preempt":0,"cached":105,"computed":31}]}],"summary":{"tau":-0.125,"simultaneity":1.0,"displacement":1.0,"gate_gap":-0.007,"throughput":188.94,"preemptions":51,"cache_hit":0.7728}},"agency_preserving":{"rounds":[{"session":0,"round":0,"t0":1.8121,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0,"first":0.2269,"finish":1.1607,"preempt":0,"cached":0,"computed":102},{"agent":"critic","rank":1,"gate":true,"arrive":0.001,"admit":1.4269,"first":1.5837,"finish":3.688,"preempt":0,"cached":32,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.002,"admit":1.5837,"first":1.7415,"finish":3.1771,"preempt":0,"cached":32,"computed":70},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0029,"admit":2.9446,"first":3.1186,"finish":4.5649,"preempt":0,"cached":32,"computed":78}]},{"session":0,"round":1,"t0":6.5652,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0023,"admit":0.0023,"first":0.0493,"finish":0.8532,"preempt":0,"cached":93,"computed":21},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":1.2493,"first":1.3015,"finish":2.1209,"preempt":0,"cached":94,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0012,"admit":1.3015,"first":1.3546,"finish":2.1453,"preempt":0,"cached":92,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.002,"admit":2.5546,"first":2.6163,"finish":3.9967,"preempt":0,"cached":93,"computed":28}]},{"session":1,"round":0,"t0":18.7426,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0017,"admit":0.0017,"first":0.1073,"finish":1.9773,"preempt":0,"cached":50,"computed":47},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":1.309,"first":1.4286,"finish":2.5129,"preempt":0,"cached":51,"computed":54},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0043,"admit":1.4286,"first":1.5426,"finish":2.9875,"preempt":0,"cached":49,"computed":51},{"agent":"summariser","rank":3,"gate":true,"arrive":0.001,"admit":2.7484,"first":2.8556,"finish":4.2867,"preempt":0,"cached":50,"computed":48}]},{"session":1,"round":1,"t0":25.2792,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0037,"admit":0.0037,"first":0.0607,"finish":0.9863,"preempt":0,"cached":91,"computed":26},{"agent":"critic","rank":1,"gate":true,"arrive":0.0035,"admit":1.2607,"first":1.314,"finish":2.4426,"preempt":0,"cached":91,"computed":24},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":1.314,"first":1.3598,"finish":3.4889,"preempt":0,"cached":90,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0037,"admit":4.9056,"first":2.6215,"finish":7.2664,"preempt":88,"cached":115,"computed":1}]},{"session":2,"round":0,"t0":27.0833,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0007,"first":0.1704,"finish":1.4564,"preempt":0,"cached":50,"computed":76},{"agent":"critic","rank":1,"gate":true,"arrive":0.0001,"admit":1.4564,"first":1.6179,"finish":3.7424,"preempt":0,"cached":51,"computed":71},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0004,"admit":1.6848,"first":1.8379,"finish":3.1525,"preempt":0,"cached":49,"computed":67},{"agent":"summariser","rank":3,"gate":true,"arrive":0.004,"admit":5.2856,"first":3.2237,"finish":6.705,"preempt":115,"cached":119,"computed":1}]},{"session":2,"round":1,"t0":31.3041,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0034,"admit":0.3366,"first":0.4228,"finish":1.9679,"preempt":0,"cached":112,"computed":36},{"agent":"critic","rank":1,"gate":true,"arrive":0.0047,"admit":1.6261,"first":1.7074,"finish":3.7326,"preempt":0,"cached":113,"computed":34},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":1.7074,"first":1.7701,"finish":2.9456,"preempt":0,"cached":111,"computed":29},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":2.9781,"first":3.0673,"finish":4.7758,"preempt":0,"cached":113,"computed":38}]},{"session":3,"round":0,"t0":28.2168,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.0016,"first":0.1799,"finish":1.968,"preempt":0,"cached":50,"computed":80},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":2.019,"first":2.1992,"finish":3.4239,"preempt":0,"cached":51,"computed":81},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0017,"admit":2.6088,"first":2.7756,"finish":4.1521,"preempt":0,"cached":49,"computed":74},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0015,"admit":4.1521,"first":4.3203,"finish":5.5046,"preempt":0,"cached":50,"computed":74}]},{"session":3,"round":1,"t0":36.9198,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.1091,"first":0.3172,"finish":1.9824,"preempt":0,"cached":50,"computed":90},{"agent":"critic","rank":1,"gate":true,"arrive":0.0012,"admit":1.5298,"first":1.7232,"finish":3.8864,"preempt":0,"cached":51,"computed":88},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":1.7232,"first":1.776,"finish":3.7377,"preempt":0,"cached":115,"computed":24},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0017,"admit":3.0062,"first":3.2045,"finish":5.1888,"preempt":0,"cached":50,"computed":90}]},{"session":4,"round":0,"t0":34.7976,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0019,"admit":0.0022,"first":0.1052,"finish":1.2575,"preempt":0,"cached":50,"computed":46},{"agent":"critic","rank":1,"gate":true,"arrive":0.0016,"admit":1.3066,"first":1.4131,"finish":3.178,"preempt":0,"cached":51,"computed":47},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0005,"admit":2.9821,"first":1.515,"finish":4.8933,"preempt":67,"cached":93,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":7.3109,"first":3.2486,"finish":8.5251,"preempt":196,"cached":94,"computed":1}]},{"session":4,"round":1,"t0":40.3593,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0014,"admit":0.2982,"first":0.3523,"finish":2.2874,"preempt":0,"cached":85,"computed":24},{"agent":"critic","rank":1,"gate":true,"arrive":0.0,"admit":1.5587,"first":1.6114,"finish":3.6348,"preempt":0,"cached":86,"computed":23},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0014,"admit":1.6114,"first":1.6633,"finish":2.769,"preempt":0,"cached":84,"computed":23},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0011,"admit":3.6348,"first":2.929,"finish":5.8738,"preempt":12,"cached":111,"computed":1}]},{"session":5,"round":0,"t0":35.5125,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0103,"first":0.1748,"finish":2.2673,"preempt":0,"cached":50,"computed":73},{"agent":"critic","rank":1,"gate":true,"arrive":0.0002,"admit":1.377,"first":1.5979,"finish":3.5736,"preempt":0,"cached":51,"computed":70},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0038,"admit":4.4136,"first":2.6277,"finish":6.2541,"preempt":2,"cached":121,"computed":1},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":9.7181,"first":4.3445,"finish":11.395,"preempt":340,"cached":122,"computed":1}]},{"session":5,"round":1,"t0":42.1614,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":1.1613,"first":1.387,"finish":3.0692,"preempt":0,"cached":50,"computed":100},{"agent":"critic","rank":1,"gate":true,"arrive":0.0026,"admit":2.5872,"first":2.7514,"finish":4.396,"preempt":0,"cached":73,"computed":73},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0001,"admit":3.0692,"first":3.1932,"finish":4.5002,"preempt":0,"cached":114,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0003,"admit":4.396,"first":4.4658,"finish":5.9203,"preempt":0,"cached":115,"computed":32}]},{"session":6,"round":0,"t0":39.1419,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0036,"admit":0.0044,"first":0.1004,"finish":1.8523,"preempt":0,"cached":50,"computed":42},{"agent":"critic","rank":1,"gate":true,"arrive":0.0011,"admit":2.6247,"first":2.7168,"finish":5.0914,"preempt":0,"cached":51,"computed":39},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":2.9667,"first":3.0513,"finish":5.2845,"preempt":0,"cached":49,"computed":35},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0022,"admit":7.0913,"first":5.1813,"finish":8.6175,"preempt":59,"cached":87,"computed":1}]},{"session":6,"round":1,"t0":45.737,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0,"admit":0.4962,"first":0.6054,"finish":2.3948,"preempt":0,"cached":50,"computed":48},{"agent":"critic","rank":1,"gate":true,"arrive":0.0003,"admit":1.8059,"first":1.8561,"finish":3.4782,"preempt":0,"cached":80,"computed":22},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0034,"admit":1.8561,"first":1.902,"finish":3.1856,"preempt":0,"cached":78,"computed":20},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0033,"admit":3.1022,"first":3.1432,"finish":3.7419,"preempt":0,"cached":80,"computed":17}]},{"session":7,"round":0,"t0":48.2598,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0021,"admit":0.0039,"first":0.153,"finish":1.9961,"preempt":0,"cached":50,"computed":65},{"agent":"critic","rank":1,"gate":true,"arrive":0.0034,"admit":1.3571,"first":1.4918,"finish":2.7932,"preempt":0,"cached":51,"computed":62},{"agent":"retriever","rank":2,"gate":false,"arrive":0.0,"admit":1.4918,"first":1.6283,"finish":2.6471,"preempt":0,"cached":49,"computed":63},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0026,"admit":2.8283,"first":2.9791,"finish":3.9616,"preempt":0,"cached":50,"computed":67}]},{"session":7,"round":1,"t0":54.0191,"realised":[0,1,2,3],"turns":[{"agent":"analyst","rank":0,"gate":false,"arrive":0.0026,"admit":0.0026,"first":0.0803,"finish":1.565,"preempt":0,"cached":105,"computed":33},{"agent":"critic","rank":1,"gate":true,"arrive":0.0028,"admit":1.2821,"first":1.3445,"finish":3.1862,"preempt":0,"cached":106,"computed":29},{"agent":"retriever","rank":2,"gate":false,"arrive":0.003,"admit":1.3445,"first":1.4062,"finish":3.0791,"preempt":0,"cached":104,"computed":28},{"agent":"summariser","rank":3,"gate":true,"arrive":0.0,"admit":2.6115,"first":2.6778,"finish":4.185,"preempt":0,"cached":105,"computed":31}]}],"summary":{"tau":1.0,"simultaneity":0.0,"displacement":0.0,"gate_gap":1.4381,"throughput":185.19,"preemptions":879,"cache_hit":0.7479}}}}}}</script>
+<script>
+(function () {
+  "use strict";
+  const DATA = JSON.parse(document.getElementById("viz-data").textContent);
+  const AGENTS = DATA.agents;
+  const GATE = DATA.gate_threshold;
+  const COLORS = ["var(--a0)", "var(--a1)", "var(--a2)", "var(--a3)"];
+
+  const POLICY_LABEL = {
+    fcfs: "FCFS (vLLM default)",
+    latency_equalised: "Latency-equalised",
+    agency_preserving: "Agency-preserving"
+  };
+  const COND_LABEL = { kv_large: "Roomy", kv_tight: "Under pressure" };
+
+  let state = { policy: "fcfs", cond: "kv_large", round: 0 };
+
+  const el = (id) => document.getElementById(id);
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function node(name, attrs, text) {
+    const n = document.createElementNS(SVGNS, name);
+    for (const k in attrs) if (attrs[k] !== null) n.setAttribute(k, attrs[k]);
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  const fmt = (v, d) => (v === null || v === undefined || isNaN(v)) ? "—" : v.toFixed(d);
+
+  // ---- controls ---------------------------------------------------------
+  function buildSeg(id, options, labels, key) {
+    const host = el(id);
+    host.textContent = "";
+    options.forEach(function (opt) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = labels[opt] || opt;
+      b.setAttribute("aria-pressed", String(state[key] === opt));
+      b.addEventListener("click", function () {
+        state[key] = opt;
+        render();
+      });
+      host.appendChild(b);
+    });
+  }
+
+  function current() {
+    return DATA.conditions[state.cond].policies[state.policy];
+  }
+
+  // ---- summary ----------------------------------------------------------
+  function renderStats() {
+    const s = current().summary;
+    const items = [
+      { t: "Order fidelity τ", v: fmt(s.tau, 2),
+        sub: s.tau < 0.25 ? "no better than chance" : (s.tau > 0.9 ? "design preserved" : "partial"),
+        alert: s.tau < 0.25 },
+      { t: "Rounds flattened", v: Math.round(s.simultaneity * 100) + "%",
+        sub: "agents speak in the same step", alert: s.simultaneity > 0.5 },
+      { t: "Human floor", v: fmt(s.gate_gap, 2) + "s",
+        sub: "needs " + GATE + "s to react", alert: s.gate_gap < GATE },
+      { t: "Windows lost", v: Math.round(s.displacement * 100) + "%",
+        sub: "gates closed too fast", alert: s.displacement > 0.25 },
+      { t: "Throughput", v: Math.round(s.throughput), sub: "output tokens / s", alert: false },
+      { t: "Preemptions", v: s.preemptions, sub: "turns evicted and redone", alert: false }
+    ];
+    const dl = el("stats");
+    dl.textContent = "";
+    items.forEach(function (it) {
+      const d = document.createElement("div");
+      d.className = "stat" + (it.alert ? " alert" : "");
+      const dt = document.createElement("dt"); dt.textContent = it.t;
+      const dd = document.createElement("dd"); dd.textContent = it.v;
+      const sp = document.createElement("span"); sp.className = "sub"; sp.textContent = it.sub;
+      dd.appendChild(sp); d.appendChild(dt); d.appendChild(dd);
+      dl.appendChild(d);
+    });
+  }
+
+  function renderLegend() {
+    const host = el("legend");
+    host.textContent = "";
+    AGENTS.forEach(function (a, i) {
+      const s = document.createElement("span");
+      const dot = document.createElement("i");
+      dot.style.background = COLORS[i];
+      s.appendChild(dot);
+      s.appendChild(document.createTextNode((i + 1) + ". " + a.name + (a.gate ? " · human gate" : "")));
+      host.appendChild(s);
+    });
+  }
+
+  // ---- overview ribbon --------------------------------------------------
+  const RIB = { left: 92, right: 26, top: 34, rowH: 22, bottom: 34, maxT: 3.2 };
+
+  function renderRibbon() {
+    const rounds = current().rounds;
+    const W = 860, H = RIB.top + rounds.length * RIB.rowH + RIB.bottom;
+    const svg = el("ribbon");
+    while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("style", "min-width:640px");
+
+    const x = (t) => RIB.left + Math.min(t, RIB.maxT) / RIB.maxT * (W - RIB.left - RIB.right);
+
+    // time axis
+    for (let t = 0; t <= 3; t += 0.5) {
+      svg.appendChild(node("line", { x1: x(t), x2: x(t), y1: RIB.top - 8, y2: H - RIB.bottom + 4,
+        stroke: "var(--rule)", "stroke-width": 1 }));
+      svg.appendChild(node("text", { x: x(t), y: RIB.top - 14, "text-anchor": "middle",
+        "font-size": 10.5, fill: "var(--ink-3)", class: "mono" }, t.toFixed(1) + "s"));
+    }
+    // human reaction threshold
+    svg.appendChild(node("line", { x1: x(GATE), x2: x(GATE), y1: RIB.top - 8, y2: H - RIB.bottom + 4,
+      stroke: "var(--warn-ink)", "stroke-width": 1.5, "stroke-dasharray": "3 3" }));
+    svg.appendChild(node("text", { x: x(GATE) + 6, y: H - RIB.bottom + 18, "font-size": 11,
+      fill: "var(--warn-ink)" }, GATE + "s — the human needs this long to react"));
+    svg.appendChild(node("text", { x: 8, y: RIB.top - 14, "font-size": 10.5, fill: "var(--ink-3)" },
+      "round"));
+
+    rounds.forEach(function (r, i) {
+      const y = RIB.top + i * RIB.rowH + RIB.rowH / 2;
+      const g = node("g", { class: "rowbtn", tabindex: 0, role: "button" });
+      g.appendChild(node("rect", { class: "hit", x: 0, y: y - RIB.rowH / 2, width: W,
+        height: RIB.rowH, fill: i === state.round ? "var(--lane)" : "transparent" }));
+      g.appendChild(node("text", { x: 8, y: y + 4, "font-size": 11, fill: "var(--ink-3)",
+        class: "mono" }, "s" + r.session + "·r" + r.round));
+      g.appendChild(node("line", { x1: RIB.left, x2: W - RIB.right, y1: y, y2: y,
+        stroke: "var(--rule)", "stroke-width": 1 }));
+
+      // stack dots that land on the same instant so overlap stays visible
+      const seen = {};
+      r.turns.forEach(function (t) {
+        if (t.first === null) return;
+        const key = t.first.toFixed(3);
+        const n = seen[key] || 0;
+        seen[key] = n + 1;
+        const dy = n === 0 ? 0 : (n % 2 ? -1 : 1) * Math.ceil(n / 2) * 4.2;
+        g.appendChild(node("circle", { cx: x(t.first), cy: y + dy, r: 4,
+          fill: COLORS[t.rank], stroke: "var(--panel)", "stroke-width": 1.4 }));
+      });
+      g.addEventListener("click", function () { state.round = i; renderDetail(); renderRibbon(); });
+      g.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault(); state.round = i; renderDetail(); renderRibbon();
+        }
+      });
+      svg.appendChild(g);
+    });
+  }
+
+  // ---- detail timeline --------------------------------------------------
+  const DET = { left: 96, right: 30, top: 40, laneH: 44, bottom: 46 };
+
+  function renderDetail() {
+    const r = current().rounds[state.round];
+    const svg = el("detail");
+    while (svg.childNodes.length > 1) svg.removeChild(svg.lastChild);
+    const W = 860, H = DET.top + AGENTS.length * DET.laneH + DET.bottom;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("style", "min-width:640px");
+
+    let maxT = 0;
+    r.turns.forEach(function (t) { if (t.finish !== null) maxT = Math.max(maxT, t.finish); });
+    maxT = Math.max(maxT, 1) * 1.04;
+    const x = (t) => DET.left + (t / maxT) * (W - DET.left - DET.right);
+
+    const step = maxT > 6 ? 2 : (maxT > 3 ? 1 : 0.5);
+    for (let t = 0; t <= maxT; t += step) {
+      svg.appendChild(node("line", { x1: x(t), x2: x(t), y1: DET.top - 10,
+        y2: H - DET.bottom + 6, stroke: "var(--rule)", "stroke-width": 1 }));
+      svg.appendChild(node("text", { x: x(t), y: DET.top - 16, "text-anchor": "middle",
+        "font-size": 10.5, fill: "var(--ink-3)", class: "mono" }, t.toFixed(1) + "s"));
+    }
+    svg.appendChild(node("text", { x: 8, y: DET.top - 16, "font-size": 11, fill: "var(--ink-3)" },
+      "round " + r.session + "·" + r.round));
+
+    const byRank = {};
+    r.turns.forEach(function (t) { byRank[t.rank] = t; });
+
+    // human gate bands, drawn behind the lanes
+    r.turns.forEach(function (t) {
+      if (!t.gate || t.first === null) return;
+      const pred = byRank[t.rank - 1];
+      if (!pred || pred.first === null) return;
+      const gap = t.first - pred.first;
+      const ok = gap >= GATE;
+      const x0 = x(Math.min(pred.first, t.first)), x1 = x(Math.max(pred.first, t.first));
+      svg.appendChild(node("rect", { x: x0, y: DET.top - 4,
+        width: Math.max(x1 - x0, 2), height: AGENTS.length * DET.laneH,
+        fill: ok ? "var(--ok-bg)" : "var(--warn-bg)" }));
+      if (x1 - x0 > 46) {
+        svg.appendChild(node("text", { x: (x0 + x1) / 2, y: H - DET.bottom + 20,
+          "text-anchor": "middle", "font-size": 11,
+          fill: ok ? "var(--ink-2)" : "var(--warn-ink)", class: "mono" },
+          gap.toFixed(2) + "s"));
+      }
+    });
+
+    r.turns.forEach(function (t, i) {
+      const y = DET.top + i * DET.laneH + DET.laneH / 2;
+      svg.appendChild(node("rect", { x: DET.left, y: y - 13, width: W - DET.left - DET.right,
+        height: 26, fill: "var(--lane)", opacity: 0.55 }));
+      svg.appendChild(node("text", { x: 8, y: y - 1, "font-size": 12.5, fill: "var(--ink)",
+        "font-weight": 500 }, (t.rank + 1) + ". " + t.agent));
+      svg.appendChild(node("text", { x: 8, y: y + 13, "font-size": 10.5, fill: "var(--ink-3)" },
+        t.gate ? "human gate before" : (t.cached + " blocks cached")));
+
+      const admit = t.admit === null ? t.arrive : t.admit;
+      if (t.first !== null) {
+        // prefill
+        svg.appendChild(node("rect", { x: x(admit), y: y - 8,
+          width: Math.max(x(t.first) - x(admit), 1.5), height: 16,
+          fill: COLORS[t.rank], opacity: 0.28 }));
+        // decode
+        if (t.finish !== null) {
+          svg.appendChild(node("rect", { x: x(t.first), y: y - 8,
+            width: Math.max(x(t.finish) - x(t.first), 1.5), height: 16,
+            fill: COLORS[t.rank], opacity: 0.9 }));
+        }
+        // first token notch
+        svg.appendChild(node("line", { x1: x(t.first), x2: x(t.first), y1: y - 15, y2: y + 15,
+          stroke: "var(--ink)", "stroke-width": 2 }));
+      }
+      if (t.preempt > 0) {
+        svg.appendChild(node("text", { x: x(admit) - 6, y: y + 4, "text-anchor": "end",
+          "font-size": 11, fill: "var(--warn-ink)" }, "↺" + t.preempt));
+      }
+    });
+
+    // realised speaking order, with simultaneous turns grouped rather than
+    // listed in sequence — ties are the finding, not an ordering
+    const spoke = r.turns.filter(function (t) { return t.first !== null; })
+      .sort(function (a, b) { return a.first - b.first || a.rank - b.rank; });
+    const groups = [];
+    spoke.forEach(function (t) {
+      const last = groups[groups.length - 1];
+      if (last && Math.abs(last.t - t.first) < 1e-6) last.names.push(t.agent);
+      else groups.push({ t: t.first, names: [t.agent] });
+    });
+    const order = groups.map(function (g) {
+      return g.names.length > 1 ? g.names.join(" + ") : g.names[0];
+    }).join(" → ");
+    const tied = groups.some(function (g) { return g.names.length > 1; });
+    svg.appendChild(node("text", { x: DET.left, y: H - 10, "font-size": 12,
+      fill: tied ? "var(--warn-ink)" : "var(--ink-2)" },
+      "spoke: " + (order || "—") + (tied ? "   (+ = same engine step)" : "")));
+  }
+
+  function renderFooter() {
+    const s = current().summary;
+    let msg;
+    if (s.tau > 0.9) {
+      msg = "With the designed order handed to the scheduler, every round runs in the intended "
+          + "sequence and the human keeps roughly " + fmt(s.gate_gap, 1) + "s of floor at each gate. "
+          + "The cost is throughput: " + Math.round(s.throughput) + " tokens per second here.";
+    } else if (s.simultaneity > 0.5) {
+      msg = "Under this policy the round mostly arrives at once: " + Math.round(s.simultaneity * 100)
+          + "% of rounds have two or more agents emitting a first token in the same engine step. "
+          + "The designed order is not reordered so much as erased, and the human never gets a turn.";
+    } else {
+      msg = "Memory pressure partly serialises the round, which accidentally restores some of the "
+          + "designed order (τ = " + fmt(s.tau, 2) + "). Scarcity protects the interaction design "
+          + "that abundance destroys — but by accident, not by design.";
+    }
+    el("foot-reading").textContent = msg;
+    el("overview-note").textContent =
+      "One row per round, one dot per agent, positioned at the moment that agent starts speaking. "
+      + "Dots stacked on top of each other mean the agents spoke simultaneously. A staircase means "
+      + "the designed order held.";
+  }
+
+  function render() {
+    buildSeg("seg-policy", ["fcfs", "latency_equalised", "agency_preserving"], POLICY_LABEL, "policy");
+    buildSeg("seg-cond", ["kv_large", "kv_tight"], COND_LABEL, "cond");
+    const n = current().rounds.length;
+    if (state.round >= n) state.round = 0;
+    renderStats(); renderLegend(); renderRibbon(); renderDetail(); renderFooter();
+  }
+
+  render();
+})();
+</script>

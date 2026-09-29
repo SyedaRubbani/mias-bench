@@ -10,7 +10,7 @@ from .policies import POLICIES, AgencyPreserving, FCFS, LatencyEqualised
 from .provenance import ProvenanceLog
 from .workload import DEFAULT_AGENTS, AgentSpec, Session, Turn, WorkloadGenerator
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "Engine", "EngineConfig", "BlockAllocator", "ProvenanceLog",
     "WorkloadGenerator", "Session", "Turn", "AgentSpec", "DEFAULT_AGENTS",
