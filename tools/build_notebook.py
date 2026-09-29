@@ -114,45 +114,113 @@ Pick **one** of the two cells below.
 - **Cell B** if it is not pushed yet: run it, and upload the `mias-bench.tar.gz`
   archive when the file picker appears.
 
+Both end by calling `use_repo()`, which changes into the repo **and puts it on
+`sys.path`**. Changing directory alone is not enough in Colab: its `sys.path`
+contains `/content` as a literal entry rather than the current directory, so
+`import mias` would still resolve against `/content` and fail. Every later
+cell calls `use_repo()` too, so you can re-run any of them after a
+disconnect without replaying the whole notebook.
+
 Whichever you use, it ends by running the test suite. If you do not see
 `OK` and a test count, **stop** — the rest of the notebook will not work.
 """
+
+CODE_BOOTSTRAP = '''\
+# Shared by every later cell, so any of them can be re-run standalone.
+import os, sys
+
+REPO_DIR = "/content/mias-bench"
+
+
+def repo_is_valid(path=None):
+    """A directory is only the repo if the package is actually inside it."""
+    path = path or REPO_DIR
+    return os.path.isfile(os.path.join(path, "mias", "__init__.py"))
+
+
+def find_repo(root="/content", depth=3):
+    """Locate the extracted repo even if the archive nested it one level."""
+    if repo_is_valid(root):
+        return root
+    for cur, dirs, _files in os.walk(root):
+        if cur.count(os.sep) - root.count(os.sep) >= depth:
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs
+                   if d not in (".git", "__pycache__", "sample_data")]
+        if repo_is_valid(cur):
+            return cur
+    return None
+
+
+def use_repo(quiet=False):
+    """Make the repo importable: chdir AND sys.path (Colab needs both).
+
+    Colab's sys.path contains "/content" as a literal entry rather than the
+    current directory, so chdir alone does not make `import mias` work.
+    """
+    global REPO_DIR
+    if not repo_is_valid():
+        found = find_repo()
+        if found is None:
+            raise RuntimeError(
+                "Could not find the mias package under /content. Run Cell A "
+                "(clone) or Cell B (upload the archive) above. If you already "
+                "did, the upload may not have been mias-bench.tar.gz - delete "
+                "/content/mias-bench and run Cell B again."
+            )
+        REPO_DIR = found
+    os.chdir(REPO_DIR)
+    if REPO_DIR not in sys.path:
+        sys.path.insert(0, REPO_DIR)
+    import mias
+    if not quiet:
+        print(f"cwd={os.getcwd()}  mias={mias.__file__}")
+    return REPO_DIR
+'''
 
 CODE_REPO_A = '''\
 # --- Cell A: clone from GitHub -------------------------------------------
 REPO_URL = "https://github.com/REPLACE-ME/mias-bench.git"   # <-- set this
 
-import os, subprocess
+import subprocess
 if "REPLACE-ME" in REPO_URL:
     raise ValueError("Set REPO_URL to your repository, or use Cell B instead.")
-if not os.path.isdir("/content/mias-bench"):
+if not os.path.isdir(REPO_DIR):
     # check=True on purpose: a failed clone must stop the notebook here,
     # not be swallowed and rediscovered ten minutes later at server launch.
-    subprocess.run(["git", "clone", "--quiet", REPO_URL,
-                    "/content/mias-bench"], check=True)
-os.chdir("/content/mias-bench")
-print("cwd:", os.getcwd())
+    subprocess.run(["git", "clone", "--quiet", REPO_URL, REPO_DIR],
+                   check=True)
+use_repo()
 !python -m unittest discover -s tests 2>&1 | tail -3
 '''
 
 CODE_REPO_B = '''\
 # --- Cell B: upload the archive instead ----------------------------------
-import os, tarfile
+import tarfile
 from google.colab import files
 
-if not os.path.isdir("/content/mias-bench"):
+# repo_is_valid, not isdir: an empty or half-made directory from an earlier
+# attempt must not be mistaken for a working checkout.
+if not repo_is_valid() and find_repo() is None:
     os.chdir("/content")
     print("Upload mias-bench.tar.gz ...")
     uploaded = files.upload()
     name = next(iter(uploaded))
-    with tarfile.open(name) as tar:
-        tar.extractall("/content")
-    if not os.path.isdir("/content/mias-bench"):
+    if not tarfile.is_tarfile(name):
         raise RuntimeError(
-            f"{name} did not contain a mias-bench/ directory - check the archive."
+            f"{name} is not a tar archive. Upload mias-bench.tar.gz "
+            "(not the .ipynb, not a .zip)."
         )
-os.chdir("/content/mias-bench")
-print("cwd:", os.getcwd())
+    with tarfile.open(name) as tar:
+        members = tar.getnames()
+        tar.extractall("/content")
+    if find_repo() is None:
+        print("archive contained:", members[:15])
+        raise RuntimeError(
+            f"{name} has no mias/__init__.py inside - wrong archive."
+        )
+use_repo()
 !python -m unittest discover -s tests 2>&1 | tail -3
 '''
 
@@ -298,6 +366,8 @@ rather than to use the fitted constants anyway.
 """
 
 CODE_CAL = '''\
+use_repo(quiet=True)
+
 import asyncio, json
 from mias.measure import calibrate
 
@@ -327,6 +397,8 @@ server, so this cell relaunches between conditions and takes roughly
 """
 
 CODE_MEASURE = '''\
+use_repo(quiet=True)
+
 import csv
 from mias.measure import build_rounds, run_measurement
 from mias.metrics import summarise
@@ -387,6 +459,8 @@ discuss the gap.
 """
 
 CODE_COMPARE = '''\
+use_repo(quiet=True)
+
 import csv, statistics as st
 
 measured = list(csv.DictReader(open("results/measured_t4.csv")))
@@ -426,6 +500,8 @@ without rerunning the GPU work.
 """
 
 CODE_PLOT = '''\
+use_repo(quiet=True)
+
 import csv, statistics as st
 import matplotlib.pyplot as plt
 
@@ -480,6 +556,8 @@ measured result without its hardware provenance is not reproducible.
 """
 
 CODE_END = '''\
+use_repo(quiet=True)
+
 import subprocess, json, datetime
 prov = {
     "date_utc": datetime.datetime.utcnow().isoformat(timespec="seconds"),
@@ -518,7 +596,8 @@ def main() -> None:
     nb = {
         "cells": [
             md(MD_INTRO), md(MD_SETUP), code(CODE_GPU), code(CODE_INSTALL),
-            md(MD_REPO), code(CODE_REPO_A), code(CODE_REPO_B),
+            md(MD_REPO), code(CODE_BOOTSTRAP),
+            code(CODE_REPO_A), code(CODE_REPO_B),
             md(MD_LAUNCH), code(CODE_LAUNCH),
             md(MD_CAL), code(CODE_CAL),
             md(MD_MEASURE), code(CODE_MEASURE),

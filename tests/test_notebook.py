@@ -97,6 +97,28 @@ class TestNotebook(unittest.TestCase):
         self.assertIn("DROPPED_FLAGS", joined,
                       "dropped flags must be recorded, not silently discarded")
 
+    def test_makes_the_repo_importable_not_just_current(self):
+        """chdir alone does not work in Colab: sys.path holds /content."""
+        joined = "\n".join(code_cells(self.nb))
+        self.assertIn("sys.path.insert", joined,
+                      "cells must put the repo on sys.path, not only chdir")
+        self.assertIn("def use_repo", joined)
+        self.assertIn("repo_is_valid", joined,
+                      "an empty leftover directory must not pass for a checkout")
+        self.assertIn("find_repo", joined,
+                      "a nested extract must still be locatable")
+
+    def test_later_cells_can_be_rerun_standalone(self):
+        """After a Colab disconnect, any cell should recover on its own."""
+        cells = code_cells(self.nb)
+        needs_repo = [c for c in cells if "from mias." in c or "import mias" in c]
+        self.assertGreaterEqual(len(needs_repo), 3)
+        for c in needs_repo:
+            if "def use_repo" in c:
+                continue        # the bootstrap cell defines it
+            self.assertIn("use_repo(", c,
+                          "a cell importing mias must call use_repo() first")
+
     def test_records_hardware_provenance(self):
         joined = "\n".join(code_cells(self.nb))
         self.assertIn("nvidia-smi", joined)
