@@ -67,19 +67,94 @@ MD_SETUP = """\
 
 Set **Runtime → Change runtime type → T4 GPU** before running anything.
 The vLLM install pulls its own PyTorch build and takes several minutes.
+
+**About the pip warnings.** Installing vLLM upgrades CUDA packages past the
+versions Colab's preinstalled RAPIDS stack (`cudf`, `cuml`, `cuvs`, `rmm`)
+pins, so pip prints a wall of *"dependency conflicts"*. Those packages are not
+used here and the warnings are harmless. The cell below verifies vLLM imports
+in a fresh subprocess afterwards — **that** check is the one that matters. If
+it fails, stop and read its output rather than continuing.
 """
 
 CODE_GPU = """\
 !nvidia-smi --query-gpu=name,memory.total,compute_cap --format=csv
 """
 
-CODE_INSTALL = """\
+CODE_INSTALL = '''\
 # vLLM brings its own torch build; this takes 5-10 minutes on Colab.
+# The "dependency conflicts" pip prints are Colab's RAPIDS stack, not vLLM.
 !pip install -q vllm aiohttp
-!git clone -q https://github.com/REPLACE-ME/mias-bench.git 2>/dev/null || true
-%cd /content/mias-bench
-!python -m unittest discover -s tests 2>&1 | tail -3
+
+# Verify in a SUBPROCESS: the notebook kernel may still hold a stale torch,
+# and vLLM runs as a subprocess anyway, which is what actually has to work.
+import subprocess, sys
+check = subprocess.run(
+    [sys.executable, "-c",
+     "import torch, vllm; print('vllm', vllm.__version__, '| torch',"
+     " torch.__version__, '| cuda', torch.cuda.is_available(),"
+     " torch.cuda.get_device_capability() if torch.cuda.is_available() else '')"],
+    capture_output=True, text=True,
+)
+print(check.stdout or check.stderr[-3000:])
+if check.returncode != 0:
+    raise RuntimeError(
+        "vLLM did not import. Do not continue - fix this first. If the error "
+        "mentions a CUDA or torch version mismatch, use Runtime > Restart "
+        "session and re-run this cell (the install itself does not need "
+        "repeating)."
+    )
+'''
+
+MD_REPO = """\
+### Get the repository
+
+Pick **one** of the two cells below.
+
+- **Cell A** if `mias-bench` is already on GitHub — set `REPO_URL` first.
+- **Cell B** if it is not pushed yet: run it, and upload the `mias-bench.tar.gz`
+  archive when the file picker appears.
+
+Whichever you use, it ends by running the test suite. If you do not see
+`OK` and a test count, **stop** — the rest of the notebook will not work.
 """
+
+CODE_REPO_A = '''\
+# --- Cell A: clone from GitHub -------------------------------------------
+REPO_URL = "https://github.com/REPLACE-ME/mias-bench.git"   # <-- set this
+
+import os, subprocess
+if "REPLACE-ME" in REPO_URL:
+    raise ValueError("Set REPO_URL to your repository, or use Cell B instead.")
+if not os.path.isdir("/content/mias-bench"):
+    # check=True on purpose: a failed clone must stop the notebook here,
+    # not be swallowed and rediscovered ten minutes later at server launch.
+    subprocess.run(["git", "clone", "--quiet", REPO_URL,
+                    "/content/mias-bench"], check=True)
+os.chdir("/content/mias-bench")
+print("cwd:", os.getcwd())
+!python -m unittest discover -s tests 2>&1 | tail -3
+'''
+
+CODE_REPO_B = '''\
+# --- Cell B: upload the archive instead ----------------------------------
+import os, tarfile
+from google.colab import files
+
+if not os.path.isdir("/content/mias-bench"):
+    os.chdir("/content")
+    print("Upload mias-bench.tar.gz ...")
+    uploaded = files.upload()
+    name = next(iter(uploaded))
+    with tarfile.open(name) as tar:
+        tar.extractall("/content")
+    if not os.path.isdir("/content/mias-bench"):
+        raise RuntimeError(
+            f"{name} did not contain a mias-bench/ directory - check the archive."
+        )
+os.chdir("/content/mias-bench")
+print("cwd:", os.getcwd())
+!python -m unittest discover -s tests 2>&1 | tail -3
+'''
 
 MD_LAUNCH = """\
 ## 2 · Launch vLLM
@@ -106,8 +181,15 @@ _server = None
 
 
 def launch(num_gpu_blocks_override=None, priority=False,
-           max_num_seqs=16, max_model_len=4096, timeout=900):
-    """Start vLLM in the background and block until it is serving."""
+           max_num_seqs=16, max_model_len=4096, timeout=900,
+           chunked_prefill=True, _retry=True):
+    """Start vLLM in the background and block until it is serving.
+
+    On Turing, chunked prefill is the flag most likely to be unsupported by
+    the engine build Colab installs. If startup fails with it on, this retries
+    once without it and tells you, rather than leaving you to read a 4000-line
+    log. Note in your results which mode actually ran.
+    """
     global _server
     shutdown()
     cmd = [
@@ -118,10 +200,11 @@ def launch(num_gpu_blocks_override=None, priority=False,
         "--max-num-seqs", str(max_num_seqs),
         "--gpu-memory-utilization", "0.85",
         "--enable-prefix-caching",
-        "--enable-chunked-prefill",
         "--disable-log-requests",
         "--port", "8000",
     ]
+    if chunked_prefill:
+        cmd += ["--enable-chunked-prefill"]
     if num_gpu_blocks_override:
         cmd += ["--num-gpu-blocks-override", str(num_gpu_blocks_override)]
     if priority:
@@ -133,14 +216,22 @@ def launch(num_gpu_blocks_override=None, priority=False,
     t0 = time.time()
     while time.time() - t0 < timeout:
         if _server.poll() is not None:
-            print(open("/content/vllm.log").read()[-4000:])
+            tail = open("/content/vllm.log").read()[-4000:]
+            if _retry and chunked_prefill:
+                print("Startup failed with --enable-chunked-prefill; "
+                      "retrying without it.\\n")
+                return launch(num_gpu_blocks_override, priority, max_num_seqs,
+                              max_model_len, timeout, chunked_prefill=False,
+                              _retry=False)
+            print(tail)
             raise RuntimeError("vLLM exited during startup - see log above")
         try:
             with urllib.request.urlopen(f"{BASE_URL}/health", timeout=2) as r:
                 if r.status == 200:
                     print(f"server up in {time.time() - t0:.0f}s  "
                           f"(blocks_override={num_gpu_blocks_override}, "
-                          f"priority={priority})")
+                          f"priority={priority}, "
+                          f"chunked_prefill={chunked_prefill})")
                     return
         except Exception:
             time.sleep(3)
@@ -394,6 +485,7 @@ def main() -> None:
     nb = {
         "cells": [
             md(MD_INTRO), md(MD_SETUP), code(CODE_GPU), code(CODE_INSTALL),
+            md(MD_REPO), code(CODE_REPO_A), code(CODE_REPO_B),
             md(MD_LAUNCH), code(CODE_LAUNCH),
             md(MD_CAL), code(CODE_CAL),
             md(MD_MEASURE), code(CODE_MEASURE),

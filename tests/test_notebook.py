@@ -67,6 +67,32 @@ class TestNotebook(unittest.TestCase):
             self.assertTrue(hasattr(measure, name),
                             f"mias.measure is missing {name}")
 
+    def test_setup_does_not_swallow_failures(self):
+        """A failed clone must stop the notebook, not be discovered later."""
+        joined = "\n".join(code_cells(self.nb))
+        self.assertNotIn("|| true", joined,
+                         "setup must not swallow a failed clone")
+        self.assertNotIn("2>/dev/null", joined,
+                         "setup must not hide error output")
+        # The repo cells must fail loudly if the working directory is wrong.
+        self.assertIn("raise", joined)
+
+    def test_verifies_vllm_imports_before_proceeding(self):
+        joined = "\n".join(code_cells(self.nb))
+        self.assertIn("import torch, vllm", joined,
+                      "notebook should smoke-test the install in a subprocess")
+        self.assertIn("returncode", joined)
+
+    def test_offers_an_upload_path_when_the_repo_is_not_pushed(self):
+        joined = "\n".join(code_cells(self.nb))
+        self.assertIn("files.upload", joined)
+        self.assertIn("tarfile", joined)
+
+    def test_launch_falls_back_when_chunked_prefill_is_unsupported(self):
+        joined = "\n".join(code_cells(self.nb))
+        self.assertIn("chunked_prefill=False", joined,
+                      "launch() should retry without chunked prefill on Turing")
+
     def test_records_hardware_provenance(self):
         joined = "\n".join(code_cells(self.nb))
         self.assertIn("nvidia-smi", joined)

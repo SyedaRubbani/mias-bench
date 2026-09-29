@@ -118,13 +118,13 @@ git clone https://github.com/<you>/mias-bench && cd mias-bench
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-./run_all.sh          # 36 tests, both experiments, both figures (~3 min, CPU only)
+./run_all.sh          # 40 tests, both experiments, both figures (~3 min, CPU only)
 ```
 
 Or step by step:
 
 ```bash
-python -m unittest discover -s tests -v       # 36 tests
+python -m unittest discover -s tests -v       # 40 tests
 python -m mias.experiments.h1_order_fidelity  # -> results/h1_order_fidelity.csv
 python -m mias.experiments.h3_policy_tradeoff # -> results/h3_policy_tradeoff.csv
 python -m mias.experiments.make_figures       # -> results/figures/*.png
@@ -185,7 +185,8 @@ tests/
   test_mias.py              20 tests: allocator invariants, metric edge cases,
                             determinism, causality, policy behaviour
   test_measure.py            9 tests: live client against a mock vLLM server
-  test_notebook.py           7 tests: notebook validity, T4 flags, sync
+  test_notebook.py          11 tests: notebook validity, T4 flags, setup
+                            failure modes, generator sync
 results/                    CSVs, a sample provenance log, figures
 ```
 
