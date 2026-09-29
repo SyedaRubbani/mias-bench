@@ -239,3 +239,47 @@ class TestCalibration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRunScript(unittest.TestCase):
+    """The single-entry-point script must be importable and self-describing.
+
+    It cannot be executed here (no GPU), but everything that is not a vLLM
+    call should still be exercised so a typo does not surface only on Colab.
+    """
+
+    def test_imports_and_exposes_a_cli(self):
+        import importlib
+        import sys
+        sys.path.insert(0, ".")
+        mod = importlib.import_module("scripts.run_t4")
+        for name in ("launch", "shutdown", "filter_flags", "supported_flags",
+                     "measure_all", "write_outputs", "main"):
+            self.assertTrue(hasattr(mod, name), f"run_t4 is missing {name}")
+
+    def test_filter_flags_drops_flag_and_value_together(self):
+        import importlib
+        import sys
+        sys.path.insert(0, ".")
+        mod = importlib.import_module("scripts.run_t4")
+        mod.DROPPED_FLAGS.clear()
+        real = mod.supported_flags
+        mod.supported_flags = lambda: frozenset(["--model", "--port"])
+        try:
+            kept = mod.filter_flags(["py", "-m", "s", "--model", "M",
+                                     "--num-gpu-blocks-override", "512",
+                                     "--port", "8000"])
+        finally:
+            mod.supported_flags = real
+        self.assertEqual(kept, ["py", "-m", "s", "--model", "M",
+                                "--port", "8000"])
+        self.assertNotIn("512", kept, "a dropped flag must take its value with it")
+        self.assertEqual(mod.DROPPED_FLAGS, ["--num-gpu-blocks-override"])
+
+    def test_help_runs_without_a_gpu(self):
+        import subprocess
+        import sys
+        out = subprocess.run([sys.executable, "scripts/run_t4.py", "--help"],
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("--smoke", out.stdout)

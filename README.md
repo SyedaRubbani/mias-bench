@@ -118,13 +118,13 @@ git clone https://github.com/<you>/mias-bench && cd mias-bench
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-./run_all.sh          # 42 tests, both experiments, both figures (~3 min, CPU only)
+./run_all.sh          # 45 tests, both experiments, both figures (~3 min, CPU only)
 ```
 
 Or step by step:
 
 ```bash
-python -m unittest discover -s tests -v       # 42 tests
+python -m unittest discover -s tests -v       # 45 tests
 python -m mias.experiments.h1_order_fidelity  # -> results/h1_order_fidelity.csv
 python -m mias.experiments.h3_policy_tradeoff # -> results/h3_policy_tradeoff.csv
 python -m mias.experiments.make_figures       # -> results/figures/*.png
@@ -134,20 +134,38 @@ Everything is seeded and deterministic: the same command produces byte-identical
 CSVs. Both figures are regenerated from the shipped CSVs alone, so a reviewer
 can reproduce every panel without rerunning a simulation.
 
-Against a real engine — free Colab T4 is enough:
+Against a real engine — free Colab T4 is enough. Three cells, no notebook
+ordering to get wrong:
 
-Open `notebooks/colab_t4_measurement.ipynb` in Colab, set **Runtime → T4 GPU**,
-and run it top to bottom (about 40 minutes, most of it the vLLM install). It
-calibrates the step-cost constants against the live server, then measures
-order fidelity under three dispatch modes and writes `results/measured_t4.csv`
-alongside a hardware-provenance record.
+```python
+!pip install -q vllm aiohttp
+```
+```python
+# upload mias-bench.tar.gz when prompted
+import tarfile, glob, os
+from google.colab import files
+up = files.upload(); name = next(iter(up))
+with tarfile.open(name) as tar: tar.extractall("/content")
+os.chdir(os.path.dirname(os.path.dirname(
+    glob.glob("/content/**/mias/__init__.py", recursive=True)[0])))
+```
+```python
+!python scripts/run_t4.py --smoke     # ~3 min, proves the path end to end
+!python scripts/run_t4.py             # ~30 min, the real run
+```
 
-The T4 caveats are real and are stated in the notebook: Turing has no
-bfloat16, so the server runs `--dtype half` and falls back from
-FlashAttention; the model is small, so absolute latencies are not comparable
-to an A100 deployment; and Colab does not permit locking GPU clocks, so report
-medians and interquartile ranges over repeats, never a single mean. What
-transfers across hardware is the *ordering* effect, not the absolute timings.
+`scripts/run_t4.py` probes which CLI flags this vLLM build accepts, launches
+the server, calibrates the step-cost constants, measures three dispatch modes
+across two KV-pool conditions, and writes `results/measured_t4.csv`,
+`calibration_t4.json` and `provenance_t4.json`. `notebooks/colab_t4_measurement.ipynb`
+does the same thing cell by cell if you prefer to step through it.
+
+The T4 caveats are real and are stated in both: Turing has no bfloat16, so the
+server runs `--dtype half` and falls back from FlashAttention; the model is
+small, so absolute latencies are not comparable to an A100 deployment; and
+Colab does not permit locking GPU clocks, so report medians and interquartile
+ranges over repeats, never a single mean. What transfers across hardware is
+the *ordering* effect, not the absolute timings.
 
 Locally, if you already have a server on `:8000`:
 
@@ -180,11 +198,13 @@ mias/
   experiments/              h1_order_fidelity, h3_policy_tradeoff, make_figures
 notebooks/
   colab_t4_measurement.ipynb   end-to-end GPU measurement on a free Colab T4
+scripts/run_t4.py           single-command GPU run (probe, calibrate, measure)
 tools/build_notebook.py     generates the notebook (kept in sync by a test)
 tests/
   test_mias.py              20 tests: allocator invariants, metric edge cases,
                             determinism, causality, policy behaviour
-  test_measure.py            9 tests: live client against a mock vLLM server
+  test_measure.py           12 tests: live client against a mock vLLM server,
+                            plus the run_t4 entry point
   test_notebook.py          13 tests: notebook validity, T4 flags, setup
                             failure modes, generator sync
 results/                    CSVs, a sample provenance log, figures
