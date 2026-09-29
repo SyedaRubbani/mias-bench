@@ -78,17 +78,20 @@ that matters is design intent, not timing.
 
 **Read this before citing anything above.**
 
-1. **This is a simulator, not a measurement of a live deployment.** The engine
-   here is a faithful reference model of vLLM's *mechanics* — block-paged KV
-   allocation, chained block hashes for prefix matching, refcounted
-   copy-on-write sharing, LRU eviction, continuous batching with chunked
-   prefill, LIFO preemption — but step timing follows a two-parameter linear
-   model whose constants are **placeholders**. `mias/adapters/vllm_adapter.py`
-   fits those constants against a real vLLM server; that path is a
-   specification with a reference implementation and has **not been executed**,
-   because no GPU was available. Every number above should be read as
-   *mechanism exists and behaves this way under this model*, not as
-   *measured on hardware*.
+1. **The results above are simulated; a measured path is included and tested.**
+   The engine here is a faithful reference model of vLLM's *mechanics* —
+   block-paged KV allocation, chained block hashes for prefix matching,
+   refcounted copy-on-write sharing, LRU eviction, continuous batching with
+   chunked prefill, LIFO preemption — but step timing follows a two-parameter
+   linear model whose constants are **placeholders**.
+   `notebooks/colab_t4_measurement.ipynb` runs the identical workload against
+   a real vLLM server on a free Colab T4, fits those constants, and measures
+   turn order on hardware. The client that does it (`mias/measure.py`) is
+   covered by nine tests against a mock server, so the code is exercised even
+   without a GPU — but **no GPU run has been performed yet**, and until
+   `results/measured_t4.csv` exists in this repository, every number in the
+   tables above should be read as *mechanism behaves this way under this
+   model*, not as *measured on hardware*.
 2. **H2 is untested.** Nothing here involves a human participant. The
    interaction measures (`initiative_displacement`, `gate_gap_seconds`) are
    mechanical proxies for agency, not measurements of it. Whether restoring
@@ -115,13 +118,13 @@ git clone https://github.com/<you>/mias-bench && cd mias-bench
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-./run_all.sh          # tests, both experiments, both figures (~3 min, CPU only)
+./run_all.sh          # 36 tests, both experiments, both figures (~3 min, CPU only)
 ```
 
 Or step by step:
 
 ```bash
-python -m unittest discover -s tests -v       # 20 tests
+python -m unittest discover -s tests -v       # 36 tests
 python -m mias.experiments.h1_order_fidelity  # -> results/h1_order_fidelity.csv
 python -m mias.experiments.h3_policy_tradeoff # -> results/h3_policy_tradeoff.csv
 python -m mias.experiments.make_figures       # -> results/figures/*.png
@@ -131,12 +134,31 @@ Everything is seeded and deterministic: the same command produces byte-identical
 CSVs. Both figures are regenerated from the shipped CSVs alone, so a reviewer
 can reproduce every panel without rerunning a simulation.
 
-Against a real engine (needs a GPU):
+Against a real engine — free Colab T4 is enough:
+
+Open `notebooks/colab_t4_measurement.ipynb` in Colab, set **Runtime → T4 GPU**,
+and run it top to bottom (about 40 minutes, most of it the vLLM install). It
+calibrates the step-cost constants against the live server, then measures
+order fidelity under three dispatch modes and writes `results/measured_t4.csv`
+alongside a hardware-provenance record.
+
+The T4 caveats are real and are stated in the notebook: Turing has no
+bfloat16, so the server runs `--dtype half` and falls back from
+FlashAttention; the model is small, so absolute latencies are not comparable
+to an A100 deployment; and Colab does not permit locking GPU clocks, so report
+medians and interquartile ranges over repeats, never a single mean. What
+transfers across hardware is the *ordering* effect, not the absolute timings.
+
+Locally, if you already have a server on `:8000`:
 
 ```bash
-vllm serve <model> --enable-prefix-caching --enable-chunked-prefill \
-    --max-num-seqs 24 --max-num-batched-tokens 2048
-python -m mias.adapters.vllm_adapter --model <model> --calibrate
+python -c "
+import asyncio
+from mias.measure import build_rounds, run_measurement
+from mias.metrics import summarise
+r = build_rounds(n_sessions=6)
+t, d = asyncio.run(run_measurement('http://localhost:8000', '<model>', r))
+print(summarise(t))"
 ```
 
 ## Layout
@@ -152,11 +174,18 @@ mias/
   provenance.py             JSONL schema joining serving + interaction events
   metrics.py                order fidelity, initiative displacement, gate gap,
                             TTFT distribution, bootstrap CIs over sessions
+  measure.py                live client: fires rounds against a real vLLM
+                            server, three dispatch modes, calibration
   harness.py                condition runner and CSV writer
   experiments/              h1_order_fidelity, h3_policy_tradeoff, make_figures
-  adapters/vllm_adapter.py  calibration + live-round execution (untested)
-tests/test_mias.py          20 tests: allocator invariants, metric edge cases,
+notebooks/
+  colab_t4_measurement.ipynb   end-to-end GPU measurement on a free Colab T4
+tools/build_notebook.py     generates the notebook (kept in sync by a test)
+tests/
+  test_mias.py              20 tests: allocator invariants, metric edge cases,
                             determinism, causality, policy behaviour
+  test_measure.py            9 tests: live client against a mock vLLM server
+  test_notebook.py           7 tests: notebook validity, T4 flags, sync
 results/                    CSVs, a sample provenance log, figures
 ```
 

@@ -1,5 +1,7 @@
-# Core simulator and experiments: standard library only.
+# Simulator and experiments: standard library only.
 # Figures:
 matplotlib>=3.7
-# Live-engine adapter only (mias/adapters/vllm_adapter.py):
-# aiohttp>=3.9
+# Live measurement against a real vLLM server (mias/measure.py) and its tests:
+aiohttp>=3.9
+# The GPU side is installed inside the Colab notebook, not here:
+#   pip install vllm
