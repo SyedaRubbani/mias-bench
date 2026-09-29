@@ -4,7 +4,7 @@
 
 A reproducible benchmark and reference implementation for studying how KV-cache
 state, continuous batching and preemption in an LLM serving engine shape the
-*realised* turn order of a multi-agent system — and whether that order can be
+*realised* turn order of a multi-agent system and whether that order can be
 brought back under the control of the interaction design.
 
 ---
@@ -14,7 +14,7 @@ brought back under the control of the interaction design.
 Mixed-initiative visual analytics systems interleave a human with several
 software agents. The interaction design specifies a **turn order**: the Analyst
 speaks, the human has a moment to react, then the Critic responds to what the
-human did. That order is load-bearing — it is what gives the human a place to
+human did. That order is load-bearing, it is what gives the human a place to
 intervene.
 
 But the design only *dispatches* the turns. Which agent actually starts
@@ -30,8 +30,8 @@ repository measures how large that effect is and whether it can be controlled.
 
 | | Claim | Tested here |
 |---|---|---|
-| **H1** | Under default scheduling (FCFS admission, LIFO preemption — vLLM's behaviour, which mixed-initiative systems inherit by not choosing otherwise), realised first-token order carries no information about the designed turn order, and the human's intervention window closes far faster than human reaction time. | **Yes** |
-| **H2** | Restoring turn order changes human agency, trust calibration and intervention behaviour — and latency *variance* matters more than latency *mean*. | **No — requires a user study.** See *Scope and honest limits*. |
+| **H1** | Under default scheduling (FCFS admission, LIFO preemption - vLLM's behaviour, which mixed-initiative systems inherit by not choosing otherwise), realised first-token order carries no information about the designed turn order, and the human's intervention window closes far faster than human reaction time. | **Yes** |
+| **H2** | Restoring turn order changes human agency, trust calibration and intervention behaviour and latency *variance* matters more than latency *mean*. | **No — requires a user study.** See *Scope and honest limits*. |
 | **H3** | An interaction-aware scheduler restores order fidelity and reopens the intervention window at a throughput cost small enough to be worth paying. | **Yes** |
 
 Each is falsifiable. H1 fails if τ is reliably high with an interval excluding
@@ -42,7 +42,7 @@ zero; H3 fails if the throughput cost is large.
 Averaged over 108 runs per hypothesis (12 seeds × 3 arrival rates × 3 KV pool
 sizes; bootstrap intervals over sessions, the independent unit).
 
-**H1 — the design does not survive the serving layer.**
+**H1 - the design does not survive the serving layer.**
 
 | Measure | Result |
 |---|---|
@@ -101,7 +101,7 @@ making them visible is part of the contribution.
    The engine here is a faithful reference model of vLLM's *mechanics* —
    block-paged KV allocation, chained block hashes for prefix matching,
    refcounted copy-on-write sharing, LRU eviction, continuous batching with
-   chunked prefill, LIFO preemption — but step timing follows a two-parameter
+   chunked prefill, LIFO preemption, but step timing follows a two-parameter
    linear model whose constants are **placeholders**.
    `notebooks/colab_t4_measurement.ipynb` runs the identical workload against
    a real vLLM server on a free Colab T4, fits those constants, and measures
