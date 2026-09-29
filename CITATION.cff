@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: "The Scheduler Is an Interaction Designer: a benchmark for serving-layer effects on turn-taking in mixed-initiative human-AI teams"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: Syeda Shafia
+    family-names: Rubbani
+    orcid: "https://orcid.org/0000-0003-2535-7463"
+repository-code: "https://github.com/REPLACE-ME/mias-bench"
+abstract: >-
+  A reproducible benchmark and reference implementation for studying how LLM
+  serving mechanics - KV-cache residency, continuous batching and preemption -
+  shape the realised turn order of multi-agent mixed-initiative systems, and
+  whether an interaction-aware scheduler can restore the designed order at
+  bounded throughput cost.
+keywords:
+  - human-AI collaboration
+  - mixed-initiative systems
+  - LLM serving
+  - vLLM
+  - scheduling
+  - agency
+license: MIT
+version: 0.1.0
+date-released: "2026-09-29"

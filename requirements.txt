@@ -1,0 +1,5 @@
+# Core simulator and experiments: standard library only.
+# Figures:
+matplotlib>=3.7
+# Live-engine adapter only (mias/adapters/vllm_adapter.py):
+# aiohttp>=3.9
